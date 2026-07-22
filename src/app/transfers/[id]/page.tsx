@@ -76,31 +76,21 @@ function TransferDetailContent() {
     pendingSavesRef.current += 1;
     setSaving(true);
 
-    let result: TransferJobDetail | null = null;
-    let failure: unknown = null;
     const task = saveChainRef.current
       .catch(() => undefined)
-      .then(async () => {
-        try {
-          result = await saveTransferJobItems(jobId, payload);
-        } catch (cause) {
-          failure = cause;
-        }
-      });
-    saveChainRef.current = task;
-    await task;
+      .then(() => saveTransferJobItems(jobId, payload));
+    saveChainRef.current = task.then(() => undefined, () => undefined);
 
-    pendingSavesRef.current -= 1;
-    if (pendingSavesRef.current === 0) setSaving(false);
-
-    if (failure) {
-      setError(failure instanceof Error ? failure.message : "선택 내용을 저장하지 못했습니다.");
-      return;
-    }
-    if (result) {
+    try {
+      const result = await task;
       setJob(result);
       setSavedAt(result.updatedAt);
       setError("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "선택 내용을 저장하지 못했습니다.");
+    } finally {
+      pendingSavesRef.current -= 1;
+      if (pendingSavesRef.current === 0) setSaving(false);
     }
   }, [active, jobId, payloadFrom]);
 
