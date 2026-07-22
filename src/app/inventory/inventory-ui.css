@@ -1,0 +1,454 @@
+.inventory-route-shell {
+  min-width: 0;
+}
+
+.inventory-route-shell .page-stack,
+.inventory-route-shell .page-stack > *,
+.inventory-route-shell .panel,
+.inventory-route-shell .table-wrap {
+  min-width: 0;
+}
+
+.inventory-route-shell .page-stack {
+  gap: 16px;
+}
+
+.inventory-route-shell .page-stack > section:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.inventory-route-shell .page-stack > section:first-child h2 {
+  margin-bottom: 2px;
+}
+
+.inventory-route-shell .page-stack > section:first-child .muted {
+  margin-bottom: 0;
+  font-size: 14px;
+}
+
+.inventory-route-shell .filter-row {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 14px;
+  box-shadow: none;
+}
+
+.inventory-route-shell .filter-row > input {
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+  font-size: 15px;
+}
+
+.inventory-route-shell .filter-row .checkbox-label {
+  min-height: 42px;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+
+.inventory-route-shell .filter-row .button {
+  min-width: 118px;
+}
+
+.inventory-route-shell .metric-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.inventory-route-shell .metric-card {
+  padding: 14px 16px;
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+.inventory-route-shell .metric-card span {
+  font-size: 12px;
+}
+
+.inventory-route-shell .metric-card strong {
+  margin-top: 6px;
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.inventory-route-shell .page-stack > .panel:has(> .table-wrap) {
+  overflow: hidden;
+  padding: 0;
+  box-shadow: none;
+}
+
+.inventory-route-shell .page-stack > .panel > .table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  overscroll-behavior-inline: contain;
+  scrollbar-gutter: stable;
+}
+
+.inventory-route-shell .page-stack > .panel > .table-wrap > table {
+  min-width: 1120px;
+  table-layout: fixed;
+}
+
+.inventory-route-shell .page-stack > .panel > .table-wrap > table th,
+.inventory-route-shell .page-stack > .panel > .table-wrap > table td {
+  overflow: hidden;
+  padding: 11px 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inventory-route-shell .page-stack > .panel > .table-wrap > table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
+}
+
+.inventory-route-shell .page-stack > .panel > .table-wrap > table th:nth-child(1),
+.inventory-route-shell .page-stack > .panel > .table-wrap > table td:nth-child(1) {
+  width: 180px;
+}
+
+.inventory-route-shell .page-stack > .panel > .table-wrap > table th:nth-child(2),
+.inventory-route-shell .page-stack > .panel > .table-wrap > table td:nth-child(2) {
+  width: 150px;
+}
+
+.inventory-route-shell .page-stack > .panel > .table-wrap > table th:nth-child(3),
+.inventory-route-shell .page-stack > .panel > .table-wrap > table td:nth-child(3) {
+  width: 390px;
+}
+
+.inventory-route-shell .page-stack > .panel > .table-wrap > table th:nth-child(4),
+.inventory-route-shell .page-stack > .panel > .table-wrap > table td:nth-child(4) {
+  width: 125px;
+}
+
+.inventory-route-shell .page-stack > .panel > .table-wrap > table th:nth-child(5),
+.inventory-route-shell .page-stack > .panel > .table-wrap > table td:nth-child(5) {
+  width: 150px;
+}
+
+.inventory-route-shell .page-stack > .panel > .table-wrap > table th:nth-child(6),
+.inventory-route-shell .page-stack > .panel > .table-wrap > table td:nth-child(6) {
+  width: 86px;
+  text-align: center;
+}
+
+.inventory-route-shell .page-stack > .panel > .table-wrap > table th:nth-child(7),
+.inventory-route-shell .page-stack > .panel > .table-wrap > table td:nth-child(7) {
+  width: 92px;
+  text-align: right;
+}
+
+.inventory-route-shell .page-stack > .panel > .table-wrap > table th:nth-child(8),
+.inventory-route-shell .page-stack > .panel > .table-wrap > table td:nth-child(8) {
+  width: 130px;
+  text-align: right;
+}
+
+.inventory-route-shell .page-stack > .panel > .table-wrap > table tbody tr {
+  transition: background-color 0.12s ease;
+}
+
+.inventory-route-shell .barcode-chip {
+  max-width: 100%;
+}
+
+.inventory-route-shell .barcode-chip code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inventory-route-shell .inventory-detail-modal {
+  width: min(920px, 100%);
+  padding: 0;
+  overflow: auto;
+}
+
+.inventory-route-shell .inventory-detail-modal > .section-heading {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin: 0;
+  padding: 18px 20px 14px;
+  background: rgba(255, 255, 255, 0.96);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(10px);
+}
+
+.inventory-route-shell .inventory-detail-modal > .detail-meta-grid,
+.inventory-route-shell .inventory-detail-modal > .barcode-detail-list,
+.inventory-route-shell .inventory-detail-modal > .zone-stock-list {
+  margin-left: 20px;
+  margin-right: 20px;
+}
+
+.inventory-route-shell .inventory-detail-modal > .detail-meta-grid {
+  margin-top: 16px;
+}
+
+.inventory-route-shell .inventory-detail-modal > .zone-stock-list {
+  margin-bottom: 20px;
+}
+
+.inventory-route-shell .inventory-detail-modal .zone-stock-section {
+  box-shadow: none;
+}
+
+.inventory-route-shell .inventory-detail-modal .zone-stock-heading {
+  padding: 12px 14px;
+}
+
+.inventory-route-shell .inventory-detail-modal .zone-stock-section .table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.inventory-route-shell .inventory-detail-modal .zone-stock-section table {
+  min-width: 560px;
+  table-layout: fixed;
+}
+
+.inventory-route-shell .inventory-detail-modal .zone-stock-section th,
+.inventory-route-shell .inventory-detail-modal .zone-stock-section td {
+  padding: 10px 14px;
+}
+
+.inventory-route-shell .inventory-detail-modal .zone-stock-section th:nth-child(1),
+.inventory-route-shell .inventory-detail-modal .zone-stock-section td:nth-child(1) {
+  width: 45%;
+}
+
+.inventory-route-shell .inventory-detail-modal .zone-stock-section th:nth-child(2),
+.inventory-route-shell .inventory-detail-modal .zone-stock-section td:nth-child(2) {
+  width: 20%;
+  text-align: right;
+}
+
+.inventory-route-shell .inventory-detail-modal .zone-stock-section th:nth-child(3),
+.inventory-route-shell .inventory-detail-modal .zone-stock-section td:nth-child(3) {
+  width: 35%;
+}
+
+@media (max-width: 1100px) {
+  .inventory-route-shell .page-stack > .panel > .table-wrap > table {
+    min-width: 1000px;
+  }
+
+  .inventory-route-shell .page-stack > .panel > .table-wrap > table th:nth-child(5),
+  .inventory-route-shell .page-stack > .panel > .table-wrap > table td:nth-child(5) {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .inventory-route-shell .page-stack {
+    gap: 12px;
+  }
+
+  .inventory-route-shell .page-stack > section:first-child .muted {
+    display: none;
+  }
+
+  .inventory-route-shell .filter-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .inventory-route-shell .filter-row > input {
+    grid-column: 1 / -1;
+  }
+
+  .inventory-route-shell .filter-row .checkbox-label {
+    justify-self: start;
+    padding: 0;
+    font-size: 12px;
+  }
+
+  .inventory-route-shell .filter-row .button {
+    width: auto;
+    min-width: 0;
+  }
+
+  .inventory-route-shell .metric-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .inventory-route-shell .metric-card {
+    min-width: 0;
+    padding: 10px;
+  }
+
+  .inventory-route-shell .metric-card span {
+    overflow: hidden;
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .inventory-route-shell .metric-card strong {
+    font-size: 19px;
+  }
+
+  .inventory-route-shell .page-stack > .panel:has(> .table-wrap) {
+    overflow: visible;
+    border: 0;
+    background: transparent;
+  }
+
+  .inventory-route-shell .page-stack > .panel > .table-wrap {
+    overflow: visible;
+  }
+
+  .inventory-route-shell .page-stack > .panel > .table-wrap > table,
+  .inventory-route-shell .page-stack > .panel > .table-wrap > table tbody,
+  .inventory-route-shell .page-stack > .panel > .table-wrap > table tr,
+  .inventory-route-shell .page-stack > .panel > .table-wrap > table td {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .inventory-route-shell .page-stack > .panel > .table-wrap > table {
+    min-width: 0;
+  }
+
+  .inventory-route-shell .page-stack > .panel > .table-wrap > table thead {
+    display: none;
+  }
+
+  .inventory-route-shell .page-stack > .panel > .table-wrap > table tbody {
+    display: grid;
+    gap: 10px;
+  }
+
+  .inventory-route-shell .page-stack > .panel > .table-wrap > table tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "artist stock"
+      "title title"
+      "barcode barcode"
+      "pcode locations"
+      "action action";
+    gap: 7px 12px;
+    padding: 14px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: 0 4px 14px rgba(22, 32, 42, 0.05);
+  }
+
+  .inventory-route-shell .page-stack > .panel > .table-wrap > table tbody td {
+    overflow: hidden;
+    padding: 0;
+    border: 0;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .inventory-route-shell .page-stack > .panel > .table-wrap > table tbody td:nth-child(1) {
+    grid-area: barcode;
+  }
+
+  .inventory-route-shell .page-stack > .panel > .table-wrap > table tbody td:nth-child(2) {
+    grid-area: artist;
+    font-weight: 800;
+  }
+
+  .inventory-route-shell .page-stack > .panel > .table-wrap > table tbody td:nth-child(3) {
+    grid-area: title;
+  }
+
+  .inventory-route-shell .page-stack > .panel > .table-wrap > table tbody td:nth-child(4) {
+    grid-area: pcode;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .inventory-route-shell .page-stack > .panel > .table-wrap > table tbody td:nth-child(5) {
+    display: none;
+  }
+
+  .inventory-route-shell .page-stack > .panel > .table-wrap > table tbody td:nth-child(6) {
+    grid-area: locations;
+    width: auto;
+    color: var(--muted);
+    font-size: 12px;
+    text-align: right;
+  }
+
+  .inventory-route-shell .page-stack > .panel > .table-wrap > table tbody td:nth-child(6)::before {
+    content: "로케이션 ";
+  }
+
+  .inventory-route-shell .page-stack > .panel > .table-wrap > table tbody td:nth-child(7) {
+    grid-area: stock;
+    width: auto;
+    font-size: 18px;
+    text-align: right;
+  }
+
+  .inventory-route-shell .page-stack > .panel > .table-wrap > table tbody td:nth-child(8) {
+    grid-area: action;
+    width: auto;
+    text-align: stretch;
+  }
+
+  .inventory-route-shell .page-stack > .panel > .table-wrap > table tbody td:nth-child(8) .button {
+    width: 100%;
+  }
+
+  .inventory-route-shell .inventory-detail-modal {
+    width: 100%;
+    max-height: calc(100vh - 20px);
+    border-radius: 16px;
+  }
+
+  .inventory-route-shell .inventory-detail-modal > .section-heading {
+    padding: 14px;
+  }
+
+  .inventory-route-shell .inventory-detail-modal > .section-heading h3 {
+    overflow: hidden;
+    max-width: 100%;
+    font-size: 17px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .inventory-route-shell .inventory-detail-modal > .detail-meta-grid,
+  .inventory-route-shell .inventory-detail-modal > .barcode-detail-list,
+  .inventory-route-shell .inventory-detail-modal > .zone-stock-list {
+    margin-left: 14px;
+    margin-right: 14px;
+  }
+
+  .inventory-route-shell .inventory-detail-modal .zone-stock-section table {
+    min-width: 0;
+  }
+
+  .inventory-route-shell .inventory-detail-modal .zone-stock-section th:nth-child(1),
+  .inventory-route-shell .inventory-detail-modal .zone-stock-section td:nth-child(1) {
+    width: 70%;
+  }
+
+  .inventory-route-shell .inventory-detail-modal .zone-stock-section th:nth-child(2),
+  .inventory-route-shell .inventory-detail-modal .zone-stock-section td:nth-child(2) {
+    width: 30%;
+  }
+
+  .inventory-route-shell .inventory-detail-modal .zone-stock-section th:nth-child(3),
+  .inventory-route-shell .inventory-detail-modal .zone-stock-section td:nth-child(3) {
+    display: none;
+  }
+}
