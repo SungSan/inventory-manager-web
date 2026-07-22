@@ -5,11 +5,14 @@ import { useUser } from "@/components/user-provider";
 import { listLocations, subscribeToInventory } from "@/lib/inventory-api";
 import { listAllInventoryRows } from "@/lib/full-data-api";
 import {
+  adminSaveLocationMapZoneSettings,
   adminSetLocationUnavailable,
   adminSetMapLocationActive,
   adminUpsertMapLocation,
   listLocationMapStates,
+  listLocationMapZoneSettings,
   type LocationMapState,
+  type LocationMapZoneSetting,
 } from "@/lib/location-map-api";
 import type { InventoryRow, Location } from "@/types/domain";
 
@@ -64,6 +67,7 @@ export function LocationMapView() {
   const [locations, setLocations] = useState<Location[]>([]);
   const [inventory, setInventory] = useState<InventoryRow[]>([]);
   const [mapStates, setMapStates] = useState<LocationMapState[]>([]);
+  const [zoneSettings, setZoneSettings] = useState<LocationMapZoneSetting[]>([]);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
@@ -77,14 +81,16 @@ export function LocationMapView() {
 
   const load = useCallback(async () => {
     try {
-      const [locationRows, inventoryRows, stateRows] = await Promise.all([
+      const [locationRows, inventoryRows, stateRows, zoneRows] = await Promise.all([
         listLocations("", true),
         listAllInventoryRows(),
         listLocationMapStates(),
+        listLocationMapZoneSettings(),
       ]);
       setLocations(locationRows);
       setInventory(inventoryRows);
       setMapStates(stateRows);
+      setZoneSettings(zoneRows);
       setError("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "로케이션맵 데이터를 불러오지 못했습니다.");
@@ -131,7 +137,16 @@ export function LocationMapView() {
     [mapStates],
   );
 
+  const zoneSettingByCode = useMemo(
+    () => new Map(zoneSettings.map((setting) => [setting.zoneCode, setting])),
+    [zoneSettings],
+  );
+
   const activeLocations = useMemo(() => locations.filter((location) => location.active), [locations]);
+  const visibleLocations = useMemo(
+    () => activeLocations.filter((location) => zoneSettingByCode.get(locationZone(location))?.visible ?? true),
+    [activeLocations, zoneSettingByCode],
+  );
   const inactiveLocations = useMemo(
     () => locations.filter((location) => !location.active).sort((a, b) => naturalCollator.compare(a.locationCode, b.locationCode)),
     [locations],
@@ -152,15 +167,15 @@ export function LocationMapView() {
 
   const statusCounts = useMemo(() => {
     const counts: Record<VisualStatus, number> = { occupied: 0, empty: 0, working: 0, unavailable: 0 };
-    for (const location of activeLocations) counts[getVisualStatus(location)] += 1;
+    for (const location of visibleLocations) counts[getVisualStatus(location)] += 1;
     return counts;
-  }, [activeLocations, inventoryByLocation, stateByLocation]);
+  }, [visibleLocations, inventoryByLocation, stateByLocation]);
 
   const zones = useMemo<ZoneMap[]>(() => {
     const keyword = search.trim().toUpperCase();
     const zoneMap = new Map<string, Map<string, Location[]>>();
 
-    for (const location of activeLocations) {
+    for (const location of visibleLocations) {
       if (keyword && !location.locationCode.toUpperCase().includes(keyword) && !locationZone(location).includes(keyword)) continue;
       const zone = locationZone(location);
       const column = aisleKey(location);
@@ -172,7 +187,11 @@ export function LocationMapView() {
     }
 
     return Array.from(zoneMap.entries())
-      .sort(([a], [b]) => naturalCollator.compare(a, b))
+      .sort(([a], [b]) => {
+        const orderA = zoneSettingByCode.get(a)?.sortOrder ?? Number.MAX_SAFE_INTEGER;
+        const orderB = zoneSettingByCode.get(b)?.sortOrder ?? Number.MAX_SAFE_INTEGER;
+        return orderA - orderB || naturalCollator.compare(a, b);
+      })
       .map(([zone, columns]) => ({
         zone,
         columns: Array.from(columns.entries())
@@ -182,7 +201,7 @@ export function LocationMapView() {
             locations: rows.sort((a, b) => naturalCollator.compare(shortLocationCode(a), shortLocationCode(b))),
           })),
       }));
-  }, [activeLocations, search]);
+  }, [visibleLocations, search, zoneSettingByCode]);
 
   const selected = locations.find((location) => location.id === selectedId);
   const selectedRows = selected ? inventoryByLocation.get(selected.id) ?? [] : [];
@@ -197,6 +216,35 @@ export function LocationMapView() {
   function openLocation(locationId: string) {
     setSelectedId(locationId);
     if (window.matchMedia(mobileDetailQuery).matches) setMobileDetailOpen(true);
+  }
+
+  function updateZoneVisibility(zoneCode: string, visible: boolean) {
+    setZoneSettings((current) => current.map((setting) => (
+      setting.zoneCode === zoneCode ? { ...setting, visible } : setting
+    )));
+  }
+
+  function setAllZoneVisibility(visible: boolean) {
+    setZoneSettings((current) => current.map((setting) => ({ ...setting, visible })));
+  }
+
+  async function saveZoneVisibility() {
+    setBusy("zones");
+    setError("");
+    setMessage("");
+    try {
+      const saved = await adminSaveLocationMapZoneSettings(zoneSettings);
+      setZoneSettings(saved);
+      if (selected && !(saved.find((setting) => setting.zoneCode === locationZone(selected))?.visible ?? true)) {
+        setSelectedId("");
+        setMobileDetailOpen(false);
+      }
+      setMessage("로케이션맵 대분류 표시 설정을 저장했습니다.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "대분류 표시 설정을 저장하지 못했습니다.");
+    } finally {
+      setBusy("");
+    }
   }
 
   async function addLocation() {
@@ -355,7 +403,7 @@ export function LocationMapView() {
 
       <section className="panel location-map-command-bar">
         <div className="location-map-metrics six">
-          <article><span>활성 LOC</span><strong>{activeLocations.length.toLocaleString()}</strong></article>
+          <article><span>표시 LOC</span><strong>{visibleLocations.length.toLocaleString()}</strong></article>
           <article><span>점유 LOC</span><strong>{statusCounts.occupied.toLocaleString()}</strong></article>
           <article><span>빈 LOC</span><strong>{statusCounts.empty.toLocaleString()}</strong></article>
           <article><span>작업 중</span><strong>{statusCounts.working.toLocaleString()}</strong></article>
@@ -422,7 +470,7 @@ export function LocationMapView() {
               </div>
             </section>
           ))}
-          {zones.length === 0 ? <section className="panel"><p className="empty-state">조건에 맞는 활성 로케이션이 없습니다.</p></section> : null}
+          {zones.length === 0 ? <section className="panel"><p className="empty-state">표시하도록 설정된 대분류가 없거나 검색 결과가 없습니다.</p></section> : null}
         </div>
 
         <aside className="panel location-detail-panel">{detailContent}</aside>
@@ -431,9 +479,33 @@ export function LocationMapView() {
       {canManage ? (
         <section className="panel location-map-admin">
           <div className="section-heading">
-            <div><p className="eyebrow">ADMIN</p><h3>로케이션맵 관리</h3><p className="muted small">LOC 추가·제외와 사용불가 상태를 각각 관리합니다.</p></div>
+            <div><p className="eyebrow">ADMIN</p><h3>로케이션맵 관리</h3><p className="muted small">대분류 표시, LOC 추가·제외, 사용불가 상태를 각각 관리합니다.</p></div>
           </div>
 
+          <div className="location-zone-visibility-admin">
+            <div className="section-heading compact">
+              <div><h3>표시할 대분류</h3><p className="muted small">체크 해제한 대분류는 맵에서만 숨겨지며 데이터와 작업 기능은 유지됩니다.</p></div>
+              <div className="location-zone-visibility-tools">
+                <button type="button" className="button button-secondary button-compact" onClick={() => setAllZoneVisibility(true)}>전체 선택</button>
+                <button type="button" className="button button-secondary button-compact" onClick={() => setAllZoneVisibility(false)}>전체 해제</button>
+                <button type="button" className="button button-primary button-compact" disabled={busy === "zones"} onClick={() => void saveZoneVisibility()}>{busy === "zones" ? "저장 중" : "표시 설정 저장"}</button>
+              </div>
+            </div>
+            <div className="location-zone-check-grid">
+              {zoneSettings.map((setting) => (
+                <label key={setting.zoneCode} className={`location-zone-check ${setting.visible ? "checked" : ""}`}>
+                  <input
+                    type="checkbox"
+                    checked={setting.visible}
+                    onChange={(event) => updateZoneVisibility(setting.zoneCode, event.target.checked)}
+                  />
+                  <span><strong>{setting.zoneCode}</strong><small>활성 LOC {setting.activeLocationCount.toLocaleString()}개</small></span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="section-heading excluded-heading"><h3>로케이션 추가·복구</h3></div>
           <div className="location-admin-form">
             <label>로케이션 코드<input value={newCode} onChange={(event) => setNewCode(event.target.value.toUpperCase())} placeholder="D1B-01-01-04" /></label>
             <label>별도 바코드 번호<input value={newBarcode} onChange={(event) => setNewBarcode(event.target.value)} placeholder="비워두면 로케이션 코드 사용" /></label>
