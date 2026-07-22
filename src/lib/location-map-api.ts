@@ -11,6 +11,14 @@ export interface LocationMapState {
   activeTransferRole?: ActiveTransferRole;
 }
 
+export interface LocationMapZoneSetting {
+  zoneCode: string;
+  visible: boolean;
+  sortOrder: number;
+  activeLocationCount: number;
+  excludedLocationCount: number;
+}
+
 function client() {
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error("Supabase 연결 설정을 확인하세요.");
@@ -49,6 +57,17 @@ function mapLocation(value: unknown): Location {
   };
 }
 
+function mapZoneSetting(value: unknown): LocationMapZoneSetting {
+  const row = asRecord(value);
+  return {
+    zoneCode: String(row.zone_code ?? row.zoneCode ?? "").toUpperCase(),
+    visible: row.visible === undefined ? true : Boolean(row.visible),
+    sortOrder: Number(row.sort_order ?? row.sortOrder ?? 0),
+    activeLocationCount: Number(row.active_location_count ?? row.activeLocationCount ?? 0),
+    excludedLocationCount: Number(row.excluded_location_count ?? row.excludedLocationCount ?? 0),
+  };
+}
+
 export async function listLocationMapStates(): Promise<LocationMapState[]> {
   if (isDemoMode()) return [];
   const { data, error } = await client().rpc("list_location_map_states");
@@ -64,6 +83,34 @@ export async function listLocationMapStates(): Promise<LocationMapState[]> {
       activeTransferRole: role as ActiveTransferRole | undefined,
     };
   }).filter((row) => row.locationId);
+}
+
+export async function listLocationMapZoneSettings(): Promise<LocationMapZoneSetting[]> {
+  if (isDemoMode()) return [];
+  const { data, error } = await client().rpc("list_location_map_zone_settings");
+  if (error) throw new Error(error.message);
+  return asArray(data)
+    .map(mapZoneSetting)
+    .filter((row) => row.zoneCode)
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.zoneCode.localeCompare(b.zoneCode));
+}
+
+export async function adminSaveLocationMapZoneSettings(
+  settings: LocationMapZoneSetting[],
+): Promise<LocationMapZoneSetting[]> {
+  ensureLiveMode();
+  const { data, error } = await client().rpc("admin_save_location_map_zone_settings", {
+    p_settings: settings.map((setting) => ({
+      zoneCode: setting.zoneCode,
+      visible: setting.visible,
+      sortOrder: setting.sortOrder,
+    })),
+  });
+  if (error) throw new Error(error.message);
+  return asArray(data)
+    .map(mapZoneSetting)
+    .filter((row) => row.zoneCode)
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.zoneCode.localeCompare(b.zoneCode));
 }
 
 export async function adminSetLocationUnavailable(
