@@ -1,6 +1,16 @@
 import { getSupabaseClient, isDemoMode } from "@/lib/supabase";
 import type { Location } from "@/types/domain";
 
+export type ActiveTransferRole = "SOURCE" | "DESTINATION" | "BOTH";
+
+export interface LocationMapState {
+  locationId: string;
+  unavailable: boolean;
+  unavailableReason?: string;
+  activeTransferCount: number;
+  activeTransferRole?: ActiveTransferRole;
+}
+
 function client() {
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error("Supabase 연결 설정을 확인하세요.");
@@ -17,6 +27,15 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function optionalString(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  return String(value);
+}
+
 function mapLocation(value: unknown): Location {
   const row = asRecord(value);
   return {
@@ -28,6 +47,37 @@ function mapLocation(value: unknown): Location {
     createdAt: row.created_at ? String(row.created_at) : undefined,
     updatedAt: row.updated_at ? String(row.updated_at) : undefined,
   };
+}
+
+export async function listLocationMapStates(): Promise<LocationMapState[]> {
+  if (isDemoMode()) return [];
+  const { data, error } = await client().rpc("list_location_map_states");
+  if (error) throw new Error(error.message);
+  return asArray(data).map((value) => {
+    const row = asRecord(value);
+    const role = optionalString(row.active_transfer_role ?? row.activeTransferRole);
+    return {
+      locationId: String(row.location_id ?? row.locationId ?? ""),
+      unavailable: Boolean(row.unavailable),
+      unavailableReason: optionalString(row.unavailable_reason ?? row.unavailableReason),
+      activeTransferCount: Number(row.active_transfer_count ?? row.activeTransferCount ?? 0),
+      activeTransferRole: role as ActiveTransferRole | undefined,
+    };
+  }).filter((row) => row.locationId);
+}
+
+export async function adminSetLocationUnavailable(
+  locationId: string,
+  unavailable: boolean,
+  reason = "",
+): Promise<void> {
+  ensureLiveMode();
+  const { error } = await client().rpc("admin_set_location_unavailable", {
+    p_location_id: locationId,
+    p_unavailable: unavailable,
+    p_reason: reason.trim() || null,
+  });
+  if (error) throw new Error(error.message);
 }
 
 export async function adminUpsertMapLocation(
