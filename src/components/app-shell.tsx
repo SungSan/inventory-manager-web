@@ -43,7 +43,7 @@ function ShellContent({ children }: { children: React.ReactNode }) {
     <div className="app-layout">
       <header className="topbar">
         <div>
-          <p className="eyebrow">SAN WMS · V1.5.2</p>
+          <p className="eyebrow">SAN WMS · V1.5.3</p>
           <h1>재고관리</h1>
         </div>
         <div className="topbar-meta">
@@ -73,5 +73,5 @@ function ShellContent({ children }: { children: React.ReactNode }) {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  return <AuthGate><ShellContent>{children}</ShellContent></AuthGate>;
+  return <AuthGate><ShellContent>{children}</AuthGate>;
 }
