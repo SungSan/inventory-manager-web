@@ -48,7 +48,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             if (error) setMessage(error.message);
           }}
         >
-          <p className="eyebrow">BARCODE WMS</p>
+          <p className="eyebrow">SAN WMS</p>
           <h1>작업자 로그인</h1>
           <label>이메일<input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></label>
           <label>비밀번호<input type="password" required value={password} onChange={(event) => setPassword(event.target.value)} /></label>
