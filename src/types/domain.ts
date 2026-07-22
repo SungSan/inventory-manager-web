@@ -202,3 +202,47 @@ export interface ImportResult {
   balancesUpserted: number;
   rowsProcessed: number;
 }
+
+export type TransferJobStatus = "DRAFT" | "READY" | "COMPLETED" | "CANCELLED";
+
+export interface TransferJobItem {
+  productId: string;
+  requestedQty: number;
+  sourceQtySnapshot: number;
+  pCodeNo: string;
+  codeNo: string;
+  masterCodeNo: string;
+  artist: string;
+  nameVer: string;
+}
+
+export interface TransferJob {
+  id: string;
+  status: TransferJobStatus;
+  sourceLocationId: string;
+  sourceLocationCode: string;
+  sourceZone?: string;
+  destinationLocationId?: string;
+  destinationLocationCode?: string;
+  destinationZone?: string;
+  createdBy?: string;
+  assignedTo: string;
+  assignedToLabel: string;
+  itemCount: number;
+  totalQty: number;
+  note?: string;
+  cancelReason?: string;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+  cancelledAt?: string;
+}
+
+export interface TransferJobDetail extends TransferJob {
+  items: TransferJobItem[];
+}
+
+export interface TransferItemInput {
+  productId: string;
+  qty: number;
+}
