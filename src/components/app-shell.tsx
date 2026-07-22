@@ -73,5 +73,5 @@ function ShellContent({ children }: { children: React.ReactNode }) {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  return <AuthGate><ShellContent>{children}</AuthGate>;
+  return <AuthGate><ShellContent>{children}</ShellContent></AuthGate>;
 }
