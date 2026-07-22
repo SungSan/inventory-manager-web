@@ -1,0 +1,176 @@
+/* v1.3.0: 재고조회 가독성 및 모바일 카메라 스캔 개선 */
+
+/* 대형 화면에서도 좌측 공백이 과도하게 생기지 않도록 전체 폭을 사용합니다. */
+.app-layout {
+  width: 100%;
+  margin: 0;
+}
+
+@media (min-width: 1600px) {
+  .topbar,
+  .main-nav,
+  .content {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+}
+
+/* 재고조회 메인 표만 고정 레이아웃을 사용해 상품명이 우측 열을 밀어내지 않게 합니다. */
+body:has(.main-nav a[href="/inventory"].active)
+  .content
+  > .page-stack
+  > section.panel
+  > .table-wrap
+  > table {
+  width: 100%;
+  min-width: 1120px;
+  table-layout: fixed;
+}
+
+body:has(.main-nav a[href="/inventory"].active)
+  .content
+  > .page-stack
+  > section.panel
+  > .table-wrap
+  > table
+  th,
+body:has(.main-nav a[href="/inventory"].active)
+  .content
+  > .page-stack
+  > section.panel
+  > .table-wrap
+  > table
+  td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+body:has(.main-nav a[href="/inventory"].active) .content > .page-stack > section.panel > .table-wrap > table :is(th, td):nth-child(1) { width: 190px; }
+body:has(.main-nav a[href="/inventory"].active) .content > .page-stack > section.panel > .table-wrap > table :is(th, td):nth-child(2) { width: 180px; }
+body:has(.main-nav a[href="/inventory"].active) .content > .page-stack > section.panel > .table-wrap > table :is(th, td):nth-child(3) { width: auto; }
+body:has(.main-nav a[href="/inventory"].active) .content > .page-stack > section.panel > .table-wrap > table :is(th, td):nth-child(4) { width: 120px; }
+body:has(.main-nav a[href="/inventory"].active) .content > .page-stack > section.panel > .table-wrap > table :is(th, td):nth-child(5) { width: 135px; }
+body:has(.main-nav a[href="/inventory"].active) .content > .page-stack > section.panel > .table-wrap > table :is(th, td):nth-child(6) { width: 86px; }
+body:has(.main-nav a[href="/inventory"].active) .content > .page-stack > section.panel > .table-wrap > table :is(th, td):nth-child(7) { width: 96px; }
+body:has(.main-nav a[href="/inventory"].active) .content > .page-stack > section.panel > .table-wrap > table :is(th, td):nth-child(8) { width: 132px; }
+
+body:has(.main-nav a[href="/inventory"].active)
+  .content
+  > .page-stack
+  > section.panel
+  > .table-wrap
+  > table
+  td:nth-child(2),
+body:has(.main-nav a[href="/inventory"].active)
+  .content
+  > .page-stack
+  > section.panel
+  > .table-wrap
+  > table
+  td:nth-child(3) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+  line-height: 1.45;
+}
+
+body:has(.main-nav a[href="/inventory"].active)
+  .content
+  > .page-stack
+  > section.panel
+  > .table-wrap
+  > table
+  td:nth-child(3)
+  > strong:first-child {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+/* 카메라 스캐너 */
+.camera-modal {
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+}
+
+.camera-heading { margin-bottom: 12px; }
+.camera-preview {
+  position: relative;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #0b0f14;
+}
+.camera-preview.detected { box-shadow: 0 0 0 3px rgba(22, 121, 74, .28); }
+.camera-preview .camera-video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: 62vh;
+  object-fit: cover;
+  border-radius: 0;
+}
+.scan-guide { position: absolute; inset: 0; pointer-events: none; }
+.scan-guide-frame {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 28%;
+  bottom: 28%;
+  border: 2px solid rgba(255, 255, 255, .82);
+  border-radius: 12px;
+  box-shadow: 0 0 0 999px rgba(0, 0, 0, .28);
+}
+.scan-guide-line {
+  position: absolute;
+  left: 11%;
+  right: 11%;
+  top: 50%;
+  height: 3px;
+  border-radius: 999px;
+  background: #ef4444;
+  box-shadow: 0 0 12px rgba(239, 68, 68, .9);
+  transform: translateY(-50%);
+}
+.camera-preview.detected .scan-guide-frame { border-color: #22c55e; }
+.camera-preview.detected .scan-guide-line {
+  background: #22c55e;
+  box-shadow: 0 0 14px rgba(34, 197, 94, .95);
+}
+.camera-detection-status {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 28px);
+  padding: 8px 12px;
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(15, 23, 42, .78);
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+}
+.camera-preview.detected .camera-detection-status { background: rgba(22, 121, 74, .92); }
+.camera-device-select { margin-top: 14px; }
+.camera-device-note { margin: 9px 0 0; color: var(--muted); font-size: 12px; }
+.camera-help { margin: 10px 0 0; font-size: 13px; }
+
+@media (max-width: 720px) {
+  body:has(.main-nav a[href="/inventory"].active)
+    .content
+    > .page-stack
+    > section.panel
+    > .table-wrap
+    > table {
+    min-width: 980px;
+  }
+
+  .camera-modal { padding: 14px; }
+  .camera-preview .camera-video { aspect-ratio: 4 / 3; max-height: 58vh; }
+  .scan-guide-frame { left: 5%; right: 5%; top: 31%; bottom: 31%; }
+  .scan-guide-line { left: 8%; right: 8%; }
+  .camera-detection-status { bottom: 10px; font-size: 12px; }
+}
