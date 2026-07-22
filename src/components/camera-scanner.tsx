@@ -101,7 +101,7 @@ export function CameraScanner({
         controlsRef.current = null;
 
         const { BrowserCodeReader, BrowserMultiFormatReader } = await import("@zxing/browser");
-        const reader = new BrowserMultiFormatReader(undefined, 180);
+        const reader = new BrowserMultiFormatReader();
 
         if (!videoRef.current) return;
 
