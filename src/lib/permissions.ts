@@ -5,6 +5,7 @@ export type Permission =
   | "view_inventory"
   | "view_logs"
   | "scan_inventory"
+  | "transfer_inventory"
   | "manage_products"
   | "manage_locations"
   | "manage_barcodes"
@@ -19,6 +20,7 @@ const rolePermissions: Record<UserRole, Permission[]> = {
     "view_inventory",
     "view_logs",
     "scan_inventory",
+    "transfer_inventory",
     "manage_products",
     "manage_locations",
     "manage_barcodes",
@@ -28,6 +30,7 @@ const rolePermissions: Record<UserRole, Permission[]> = {
     "view_inventory",
     "view_logs",
     "scan_inventory",
+    "transfer_inventory",
     "manage_products",
     "manage_locations",
     "manage_barcodes",
@@ -39,6 +42,7 @@ const rolePermissions: Record<UserRole, Permission[]> = {
     "view_inventory",
     "view_logs",
     "scan_inventory",
+    "transfer_inventory",
     "manage_products",
     "manage_locations",
     "manage_barcodes",
