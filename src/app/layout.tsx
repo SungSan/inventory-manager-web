@@ -3,11 +3,12 @@ import "@/app/globals.css";
 import "@/app/v1-3.css";
 import "@/app/transfer.css";
 import "@/app/v1-4.css";
+import "@/app/location-map.css";
 import { AppShell } from "@/components/app-shell";
 import { PwaRegister } from "@/components/pwa-register";
 
 export const metadata: Metadata = {
-  title: "Barcode WMS v1",
+  title: "SAN WMS",
   description: "상품·로케이션 바코드 기반 실시간 재고관리",
   manifest: "/manifest.webmanifest",
   icons: { icon: "/icon-192.png", apple: "/icon-192.png" },
