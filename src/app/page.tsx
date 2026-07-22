@@ -41,6 +41,7 @@ export default function DashboardPage() {
 
     {user ? <section className="quick-grid">
       {hasPermission(user.role, "scan_inventory") ? <Link href="/scan" className="quick-card"><strong>입고·출고 시작</strong><span>상품과 로케이션 바코드 스캔</span></Link> : null}
+      {hasPermission(user.role, "transfer_inventory") ? <Link href="/transfers" className="quick-card"><strong>재고 이관</strong><span>진행 중 업무 저장·재개 및 LOC 간 이동</span></Link> : null}
       {hasPermission(user.role, "manage_products") ? <Link href="/products" className="quick-card"><strong>신규 상품 등록</strong><span>대표 바코드와 동시에 생성</span></Link> : null}
       {hasPermission(user.role, "manage_barcodes") ? <Link href="/barcodes" className="quick-card"><strong>바코드 연결</strong><span>추가 번호·대표·라벨 관리</span></Link> : null}
       {hasPermission(user.role, "view_logs") ? <Link href="/logs" className="quick-card"><strong>작업 로그</strong><span>거래·스캔·감사 내역 확인</span></Link> : null}
