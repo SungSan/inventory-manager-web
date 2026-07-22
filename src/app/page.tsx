@@ -35,13 +35,14 @@ export default function DashboardPage() {
   }, [inventory, locations.length, products.length, scans]);
 
   return <div className="page-stack">
-    <section><p className="eyebrow">OVERVIEW</p><h2>실시간 재고 현황</h2><p className="muted">데모 데이터도 브라우저에 지속 저장되며, 다른 탭의 변경이 즉시 반영됩니다.</p></section>
+    <section><p className="eyebrow">OVERVIEW</p><h2>실시간 재고 현황</h2></section>
     {error ? <p className="inline-error">{error}</p> : null}
     <section className="metric-grid five"><article className="metric-card"><span>총 재고</span><strong>{metrics.totalQty.toLocaleString()}</strong></article><article className="metric-card"><span>활성 상품</span><strong>{metrics.skuCount}</strong></article><article className="metric-card"><span>활성 로케이션</span><strong>{metrics.locationCount}</strong></article><article className="metric-card"><span>5개 이하</span><strong>{metrics.lowStock}</strong></article><article className="metric-card"><span>최근 스캔 오류</span><strong>{metrics.scanFailures}</strong></article></section>
 
     {user ? <section className="quick-grid">
       {hasPermission(user.role, "scan_inventory") ? <Link href="/scan" className="quick-card"><strong>입고·출고 시작</strong><span>상품과 로케이션 바코드 스캔</span></Link> : null}
       {hasPermission(user.role, "transfer_inventory") ? <Link href="/transfers" className="quick-card"><strong>재고 이관</strong><span>진행 중 업무 저장·재개 및 LOC 간 이동</span></Link> : null}
+      {hasPermission(user.role, "view_inventory") ? <Link href="/location-map" className="quick-card"><strong>LOC MAP</strong><span>점유·빈 로케이션과 상세 재고 확인</span></Link> : null}
       {hasPermission(user.role, "manage_products") ? <Link href="/products" className="quick-card"><strong>신규 상품 등록</strong><span>대표 바코드와 동시에 생성</span></Link> : null}
       {hasPermission(user.role, "manage_barcodes") ? <Link href="/barcodes" className="quick-card"><strong>바코드 연결</strong><span>추가 번호·대표·라벨 관리</span></Link> : null}
       {hasPermission(user.role, "view_logs") ? <Link href="/logs" className="quick-card"><strong>작업 로그</strong><span>거래·스캔·감사 내역 확인</span></Link> : null}
