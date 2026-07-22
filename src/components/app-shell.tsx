@@ -15,6 +15,7 @@ const nav: Array<{ href: string; label: string; permission: Permission }> = [
   { href: "/scan", label: "입고·출고", permission: "scan_inventory" },
   { href: "/inventory", label: "재고조회", permission: "view_inventory" },
   { href: "/utilization", label: "용적률", permission: "view_inventory" },
+  { href: "/location-map", label: "LOC MAP", permission: "view_inventory" },
   { href: "/transfers", label: "재고이관", permission: "transfer_inventory" },
   { href: "/products", label: "상품관리", permission: "manage_products" },
   { href: "/locations", label: "로케이션", permission: "manage_locations" },
@@ -42,7 +43,7 @@ function ShellContent({ children }: { children: React.ReactNode }) {
     <div className="app-layout">
       <header className="topbar">
         <div>
-          <p className="eyebrow">BARCODE WMS · V1.4.0</p>
+          <p className="eyebrow">SAN WMS · V1.5.0</p>
           <h1>재고관리</h1>
         </div>
         <div className="topbar-meta">
