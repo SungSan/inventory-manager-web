@@ -1,6 +1,6 @@
 {
-  "name": "Barcode WMS v1",
-  "short_name": "WMS",
+  "name": "SAN WMS",
+  "short_name": "SAN WMS",
   "description": "상품·로케이션 바코드 기반 재고관리",
   "start_url": "/",
   "display": "standalone",
