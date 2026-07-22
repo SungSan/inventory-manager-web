@@ -1,5 +1,5 @@
-const CACHE = "barcode-wms-v1-2-0-static";
-const ASSETS = ["/", "/scan", "/inventory", "/products", "/locations", "/barcodes", "/logs"];
+const CACHE = "barcode-wms-v1-3-0-static";
+const ASSETS = ["/", "/scan", "/inventory", "/transfers", "/products", "/locations", "/barcodes", "/logs"];
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).catch(() => undefined));
   self.skipWaiting();
