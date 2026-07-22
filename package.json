@@ -1,6 +1,6 @@
 {
   "name": "san-wms",
-  "version": "1.5.2",
+  "version": "3.5.4",
   "private": true,
   "scripts": {
     "dev": "next dev",
