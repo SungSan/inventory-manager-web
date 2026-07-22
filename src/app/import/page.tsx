@@ -10,10 +10,53 @@ import type { ImportInventoryRow, ImportResult } from "@/types/domain";
 
 const sample = `D1A-01-02-03,P-10003,8801234567800,,IVE,3RD EP / VER.A,12`;
 
+type CsvEncodingMode = "auto" | "utf-8" | "euc-kr";
+type DetectedCsvEncoding = "UTF-8" | "CP949/EUC-KR";
+
 function layoutLabel(layout: InventoryCsvLayout | null): string {
   if (layout === "LEGACY_7_COLUMNS") return "헤더 없는 기존 A~G 양식";
   if (layout === "HEADER") return "헤더 포함 CSV 양식";
   return "미분석";
+}
+
+function cleanDecodedText(value: string): string {
+  return value.replace(/^\uFEFF/, "").replace(/\u0000/g, "");
+}
+
+function decodeCsvBuffer(
+  buffer: ArrayBuffer,
+  mode: CsvEncodingMode,
+): { content: string; detected: DetectedCsvEncoding } {
+  if (mode === "utf-8") {
+    return {
+      content: cleanDecodedText(new TextDecoder("utf-8").decode(buffer)),
+      detected: "UTF-8",
+    };
+  }
+
+  if (mode === "euc-kr") {
+    return {
+      content: cleanDecodedText(new TextDecoder("euc-kr").decode(buffer)),
+      detected: "CP949/EUC-KR",
+    };
+  }
+
+  try {
+    const utf8 = new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+    return { content: cleanDecodedText(utf8), detected: "UTF-8" };
+  } catch {
+    const cp949 = new TextDecoder("euc-kr").decode(buffer);
+    return { content: cleanDecodedText(cp949), detected: "CP949/EUC-KR" };
+  }
+}
+
+function assertReadableCsv(content: string): void {
+  const replacementCount = (content.match(/\uFFFD/g) ?? []).length;
+  if (replacementCount > 0) {
+    throw new Error(
+      `한글이 깨진 문자(�)가 ${replacementCount}개 발견됐습니다. 깨진 내용을 붙여넣지 말고 원본 CSV 파일을 업로드한 뒤 인코딩을 자동 또는 CP949로 선택하세요.`,
+    );
+  }
 }
 
 function ImportContent() {
@@ -22,17 +65,27 @@ function ImportContent() {
   const [layout, setLayout] = useState<InventoryCsvLayout | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [encodingMode, setEncodingMode] = useState<CsvEncodingMode>("auto");
+  const [detectedEncoding, setDetectedEncoding] = useState<DetectedCsvEncoding | "">("");
   const [feedback, setFeedback] = useState<{ kind: FeedbackKind; title: string; body?: string } | null>(null);
 
-  function preview(content = text) {
+  function resetParsedState(): void {
+    setRows([]);
+    setLayout(null);
+    setResult(null);
+  }
+
+  function preview(content = text, encoding = detectedEncoding) {
     try {
+      assertReadableCsv(content);
       const parsed = parseInventoryCsv(content);
       setRows(parsed.rows);
       setLayout(parsed.layout);
       setFeedback({
         kind: "success",
         title: "CSV 분석 완료",
-        body: `${layoutLabel(parsed.layout)} · ${parsed.rows.length}개 행`,
+        body: `${encoding ? `${encoding} · ` : ""}${layoutLabel(parsed.layout)} · ${parsed.rows.length}개 행`,
       });
     } catch (cause) {
       setRows([]);
@@ -41,11 +94,33 @@ function ImportContent() {
     }
   }
 
+  async function loadCsvFile(file: File, mode: CsvEncodingMode): Promise<void> {
+    try {
+      const buffer = await file.arrayBuffer();
+      const decoded = decodeCsvBuffer(buffer, mode);
+      setText(decoded.content);
+      setDetectedEncoding(decoded.detected);
+      resetParsedState();
+      preview(decoded.content, decoded.detected);
+    } catch (cause) {
+      resetParsedState();
+      setDetectedEncoding("");
+      setFeedback({
+        kind: "error",
+        title: "CSV 파일 읽기 실패",
+        body: cause instanceof Error ? cause.message : "파일을 읽지 못했습니다.",
+      });
+    }
+  }
+
   async function runImport() {
     setBusy(true);
     setResult(null);
     try {
-      const parsed = rows.length ? { rows, layout: layout ?? "HEADER" as InventoryCsvLayout } : parseInventoryCsv(text);
+      assertReadableCsv(text);
+      const parsed = parseInventoryCsv(text);
+      setRows(parsed.rows);
+      setLayout(parsed.layout);
       const imported = await importInventoryRows(parsed.rows);
       setResult(imported);
       setFeedback({
@@ -83,24 +158,51 @@ function ImportContent() {
       </section>
 
       <section className="panel form-stack">
-        <label>
-          CSV 파일
-          <input
-            type="file"
-            accept=".csv,text/csv"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (!file) return;
-              void file.text().then((content) => {
-                setText(content);
-                preview(content);
-              });
-            }}
-          />
-        </label>
+        <div className="field-grid two">
+          <label>
+            CSV 파일
+            <input
+              type="file"
+              accept=".csv,.txt,text/csv,text/plain"
+              onChange={(event) => {
+                const file = event.target.files?.[0] ?? null;
+                setSelectedFile(file);
+                if (!file) return;
+                void loadCsvFile(file, encodingMode);
+              }}
+            />
+          </label>
+          <label>
+            파일 인코딩
+            <select
+              value={encodingMode}
+              onChange={(event) => {
+                const nextMode = event.target.value as CsvEncodingMode;
+                setEncodingMode(nextMode);
+                if (selectedFile) void loadCsvFile(selectedFile, nextMode);
+              }}
+            >
+              <option value="auto">자동 감지 권장</option>
+              <option value="utf-8">UTF-8</option>
+              <option value="euc-kr">CP949 / EUC-KR</option>
+            </select>
+          </label>
+        </div>
+        <p className="muted small">
+          엑셀에서 저장한 한글 CSV는 보통 CP949입니다. 자동 감지가 실패할 때만 CP949 / EUC-KR을 직접 선택하세요.
+          {detectedEncoding ? ` 현재 파일: ${detectedEncoding}` : ""}
+        </p>
         <label>
           CSV 내용
-          <textarea rows={12} value={text} onChange={(event) => setText(event.target.value)} />
+          <textarea
+            rows={12}
+            value={text}
+            onChange={(event) => {
+              setText(event.target.value);
+              setDetectedEncoding("");
+              resetParsedState();
+            }}
+          />
         </label>
         <div className="action-row">
           <button className="button button-secondary" onClick={() => preview()}>미리보기</button>
@@ -115,6 +217,7 @@ function ImportContent() {
       {layout ? (
         <section className="metric-grid">
           <article className="metric-card"><span>인식 양식</span><strong className="metric-text">{layoutLabel(layout)}</strong></article>
+          <article className="metric-card"><span>문자 인코딩</span><strong className="metric-text">{detectedEncoding || "직접 입력"}</strong></article>
           <article className="metric-card"><span>미리보기 행</span><strong>{rows.length}</strong></article>
         </section>
       ) : null}
