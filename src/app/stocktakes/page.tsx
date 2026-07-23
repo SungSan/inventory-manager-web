@@ -34,6 +34,24 @@ function formatDate(value?: string): string {
   return value ? new Date(value).toLocaleDateString("ko-KR") : "-";
 }
 
+function activeDashboard(source: InventoryCountDashboard): InventoryCountDashboard {
+  const locations = source.locations.filter((row) => row.active);
+  const count = (status: InventoryCountStatus) => locations.filter((row) => row.countStatus === status).length;
+  return {
+    ...source,
+    locations,
+    summary: {
+      total: locations.length,
+      complete: count("COMPLETE"),
+      dueSoon: count("DUE_SOON"),
+      due: count("DUE"),
+      never: count("NEVER"),
+      planned: count("PLANNED"),
+      inProgress: count("IN_PROGRESS"),
+    },
+  };
+}
+
 function StocktakesContent() {
   const [dashboard, setDashboard] = useState<InventoryCountDashboard | null>(null);
   const [scopeType, setScopeType] = useState<"ALL" | "ZONE" | "LOCATIONS" | "DUE">("ALL");
@@ -48,7 +66,7 @@ function StocktakesContent() {
 
   const load = useCallback(async () => {
     try {
-      setDashboard(await getInventoryCountDashboard());
+      setDashboard(activeDashboard(await getInventoryCountDashboard()));
       setError("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "재고실사 현황을 불러오지 못했습니다.");
@@ -88,7 +106,7 @@ function StocktakesContent() {
 
   return (
     <div className={`page-stack ${styles.page}`}>
-      <section><p className="eyebrow">CYCLE COUNT</p><h2>재고실사</h2><p className="muted">로케이션별 실사 이력과 3개월 재실사 주기를 관리합니다. 실사 시작 후 완료·취소 전까지 해당 LOC의 입고·출고·이관은 잠깁니다.</p></section>
+      <section><p className="eyebrow">CYCLE COUNT</p><h2>재고실사</h2><p className="muted">로케이션별 실사 이력과 3개월 재실사 주기를 관리합니다. 사용불가 LOC는 대상에서 제외되며, 실사 시작 후 완료·취소 전까지 해당 LOC의 입고·출고·이관은 잠깁니다.</p></section>
       {error ? <p className="inline-error">{error}</p> : null}
       {message ? <div className="feedback feedback-success"><strong>{message}</strong></div> : null}
       <section className={styles.metricGrid}>
@@ -102,7 +120,7 @@ function StocktakesContent() {
       <section className="panel">
         <div className="section-heading"><div><p className="eyebrow">NEW COUNT</p><h3>신규 재고실사 생성</h3></div></div>
         <div className={styles.createGrid}>
-          <label>실사 범위<select value={scopeType} onChange={(event) => setScopeType(event.target.value as typeof scopeType)} disabled={busy}><option value="ALL">전체 활성 로케이션</option><option value="DUE">재실사 필요·미실사만</option><option value="ZONE">구역별 실사</option><option value="LOCATIONS">특정 로케이션</option></select></label>
+          <label>실사 범위<select value={scopeType} onChange={(event) => setScopeType(event.target.value as typeof scopeType)} disabled={busy}><option value="ALL">전체 사용 가능 로케이션</option><option value="DUE">재실사 필요·미실사만</option><option value="ZONE">구역별 실사</option><option value="LOCATIONS">특정 로케이션</option></select></label>
           {scopeType === "ZONE" ? <label>구역<select value={zone} onChange={(event) => setZone(event.target.value)} disabled={busy}><option value="">구역 선택</option>{zones.map((item) => <option key={item} value={item}>{item}</option>)}</select></label> : null}
           {scopeType === "LOCATIONS" ? <label>로케이션<select value={locationId} onChange={(event) => setLocationId(event.target.value)} disabled={busy}><option value="">로케이션 선택</option>{(dashboard?.locations ?? []).map((item) => <option key={item.locationId} value={item.locationId}>{item.locationCode} · {statusLabel[item.countStatus]}</option>)}</select></label> : null}
           <label className={styles.noteField}>메모(선택)<input value={note} onChange={(event) => setNote(event.target.value)} placeholder="예: 3분기 전체 재고실사" disabled={busy} /></label>
