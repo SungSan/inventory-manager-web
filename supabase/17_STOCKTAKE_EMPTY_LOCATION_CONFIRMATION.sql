@@ -25,15 +25,15 @@ end;
 $$;
 
 drop trigger if exists trg_guard_inventory_count_target_location
-  on public.inventory_count_session_locations;
+  on public.inventory_count_locations;
 
 create trigger trg_guard_inventory_count_target_location
-before insert on public.inventory_count_session_locations
+before insert on public.inventory_count_locations
 for each row
 execute function public.guard_inventory_count_target_location();
 
 -- 이미 생성됐지만 아직 시작하지 않은 사용불가 LOC도 대상에서 정리한다.
-delete from public.inventory_count_session_locations sl
+delete from public.inventory_count_locations sl
 using public.locations l
 where sl.location_id = l.id
   and coalesce(l.active, false) = false
@@ -56,7 +56,7 @@ declare
 begin
   select l.location_code, sl.status
     into v_location_code, v_status
-  from public.inventory_count_session_locations sl
+  from public.inventory_count_locations sl
   join public.inventory_count_sessions s on s.id = sl.session_id
   join public.locations l on l.id = sl.location_id
   where sl.session_id = p_session_id
@@ -109,6 +109,7 @@ $$;
 grant execute on function public.complete_empty_inventory_count_location(uuid, uuid)
   to authenticated;
 
+notify pgrst, 'reload schema';
 commit;
 
 select 'SAN WMS V3.8.2 inactive LOC exclusion and empty LOC confirmation migration completed' as result;
