@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Product, ResolvedBarcode } from "@/types/domain";
 
+const EMPTY_QUANTITIES: Record<string, number> = {};
+
 export interface MultiProductBarcodeSelection {
   match: ResolvedBarcode;
   product: Product;
@@ -32,8 +34,8 @@ export function MultiProductBarcodePicker({
   title = "상품을 복수 선택하세요",
   description = "같은 바코드에 연결된 상품 중 필요한 품목을 체크하고 수량을 각각 입력하세요.",
   confirmLabel = "선택 상품 적용",
-  initialQuantities = {},
-  maxQuantities = {},
+  initialQuantities = EMPTY_QUANTITIES,
+  maxQuantities = EMPTY_QUANTITIES,
   busy = false,
   onConfirm,
   onClose,
