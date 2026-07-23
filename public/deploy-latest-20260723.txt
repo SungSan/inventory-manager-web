@@ -1,0 +1,2 @@
+SAN WMS latest deployment trigger
+Includes scan-first operation selection, isolated A4 portrait shipment printing, exact Soundwave PNG logo, and shipment LOC column removal.
