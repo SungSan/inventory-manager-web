@@ -1,14 +1,144 @@
 @page {
-  size: A4 landscape;
-  margin: 10mm;
+  size: A4 portrait;
+  margin: 0;
+}
+
+/* 화면에서도 실제 A4 세로 용지와 같은 비율·배치를 사용합니다. */
+html body [data-print-sheet="external-shipment"] {
+  box-sizing: border-box !important;
+  width: 210mm !important;
+  max-width: 100% !important;
+  min-height: 297mm !important;
+  margin: 0 auto !important;
+  padding: 8mm !important;
+  overflow: visible !important;
+  color: #111827 !important;
+  background: #fff !important;
+  print-color-adjust: exact !important;
+  -webkit-print-color-adjust: exact !important;
+}
+
+html body [data-print-sheet="external-shipment"] > header {
+  display: grid !important;
+  grid-template-columns: 45mm minmax(0, 1fr) 40mm !important;
+  gap: 4mm !important;
+  align-items: center !important;
+  padding-bottom: 4mm !important;
+  text-align: initial !important;
+}
+
+html body [data-print-sheet="external-shipment"] > header img {
+  width: 45mm !important;
+  max-width: 100% !important;
+  height: auto !important;
+  margin: 0 !important;
+  object-fit: contain !important;
+  object-position: left center !important;
+}
+
+html body [data-print-sheet="external-shipment"] > header h1 {
+  font-size: 23px !important;
+  letter-spacing: .22em !important;
+}
+
+html body [data-print-sheet="external-shipment"] > header p,
+html body [data-print-sheet="external-shipment"] > header span {
+  font-size: 9px !important;
+}
+
+html body [data-print-sheet="external-shipment"] > header > div:last-child {
+  text-align: right !important;
+}
+
+/* 출고정보 표: 화면과 출력 모두 항상 4열 유지 */
+html body [data-print-sheet="external-shipment"] > header + section {
+  display: grid !important;
+  grid-template-columns: 25mm minmax(0, 1fr) 27mm minmax(0, 1fr) !important;
+  margin-top: 4mm !important;
+}
+
+html body [data-print-sheet="external-shipment"] > header + section > div {
+  min-height: 8.5mm !important;
+  padding: 2mm 2.5mm !important;
+  font-size: 10.5px !important;
+  line-height: 1.3 !important;
+}
+
+html body [data-print-sheet="external-shipment"] > header + section > div:last-child {
+  grid-column: span 3 !important;
+}
+
+/* SKU를 더 많이 담도록 표의 여백과 글자 크기를 축소 */
+html body [data-print-sheet="external-shipment"] > table {
+  width: 100% !important;
+  min-width: 0 !important;
+  margin-top: 4mm !important;
+  table-layout: fixed !important;
+  border-collapse: collapse !important;
+}
+
+html body [data-print-sheet="external-shipment"] > table th,
+html body [data-print-sheet="external-shipment"] > table td {
+  padding: 1.35mm .8mm !important;
+  font-size: 8.3px !important;
+  line-height: 1.25 !important;
+  overflow-wrap: anywhere !important;
+}
+
+html body [data-print-sheet="external-shipment"] > table thead th:nth-child(1) { width: 5% !important; }
+html body [data-print-sheet="external-shipment"] > table thead th:nth-child(2) { width: 29% !important; }
+html body [data-print-sheet="external-shipment"] > table thead th:nth-child(3) { width: 14% !important; }
+html body [data-print-sheet="external-shipment"] > table thead th:nth-child(4) { width: 11% !important; }
+html body [data-print-sheet="external-shipment"] > table thead th:nth-child(5) { width: 11% !important; }
+html body [data-print-sheet="external-shipment"] > table thead th:nth-child(6) { width: 17% !important; }
+html body [data-print-sheet="external-shipment"] > table thead th:nth-child(7) { width: 6% !important; }
+html body [data-print-sheet="external-shipment"] > table thead th:nth-child(8) { width: 7% !important; }
+
+html body [data-print-sheet="external-shipment"] > table td:nth-child(2) {
+  text-align: left !important;
+}
+
+html body [data-print-sheet="external-shipment"] > table td:nth-child(2) span {
+  margin-top: 1mm !important;
+}
+
+html body [data-print-sheet="external-shipment"] > table + section {
+  min-height: 14mm !important;
+  margin-top: 3mm !important;
+  grid-template-columns: 25mm minmax(0, 1fr) !important;
+}
+
+html body [data-print-sheet="external-shipment"] > table + section p {
+  padding: 2.5mm !important;
+  font-size: 10px !important;
+  line-height: 1.35 !important;
+}
+
+html body [data-print-sheet="external-shipment"] > footer {
+  gap: 4mm !important;
+  margin-top: 5mm !important;
+}
+
+html body [data-print-sheet="external-shipment"] > footer > div {
+  min-height: 12mm !important;
+  padding: 2mm 2.5mm !important;
+  grid-template-columns: 23mm 1fr 14mm !important;
+  font-size: 10px !important;
+}
+
+html body [data-print-sheet="external-shipment"] > footer > p {
+  margin-top: 1mm !important;
+  font-size: 8px !important;
 }
 
 @media print {
   html,
   body {
-    width: auto !important;
+    width: 210mm !important;
     height: auto !important;
+    min-height: 297mm !important;
     margin: 0 !important;
+    padding: 0 !important;
     overflow: visible !important;
     background: #fff !important;
   }
@@ -22,20 +152,36 @@
     visibility: visible !important;
   }
 
-  [data-print-sheet="external-shipment"] {
+  html body [data-print-sheet="external-shipment"] {
     position: absolute !important;
     top: 0 !important;
     left: 0 !important;
     display: block !important;
-    width: 277mm !important;
-    max-width: none !important;
-    min-height: 0 !important;
+    width: 210mm !important;
+    max-width: 210mm !important;
+    min-height: 297mm !important;
     margin: 0 !important;
-    padding: 0 !important;
-    overflow: visible !important;
-    color: #111827 !important;
-    background: #fff !important;
+    padding: 8mm !important;
     border: 0 !important;
     box-shadow: none !important;
+  }
+
+  html body [data-print-sheet="external-shipment"] > header,
+  html body [data-print-sheet="external-shipment"] > header + section,
+  html body [data-print-sheet="external-shipment"] > table + section,
+  html body [data-print-sheet="external-shipment"] > footer {
+    break-inside: avoid !important;
+  }
+
+  html body [data-print-sheet="external-shipment"] > table {
+    min-width: 0 !important;
+  }
+
+  html body [data-print-sheet="external-shipment"] > table thead {
+    display: table-header-group !important;
+  }
+
+  html body [data-print-sheet="external-shipment"] > table tr {
+    break-inside: avoid !important;
   }
 }
