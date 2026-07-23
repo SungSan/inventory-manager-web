@@ -12,7 +12,7 @@ const emptyForm: ProductInput = { pCodeNo: "", codeNo: "", masterCodeNo: "", art
 
 function ProductsContent() {
   const { user } = useUser();
-  const canDelete = user?.role === "admin";
+  const canDelete = user?.role === "admin" || user?.role === "manager";
   const [rows, setRows] = useState<Product[]>([]);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState<ProductInput>(emptyForm);
