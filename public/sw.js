@@ -1,4 +1,4 @@
-const CACHE = "san-wms-v3-5-6-static";
+const CACHE = "san-wms-v3-5-7-static";
 const ASSETS = ["/", "/scan", "/inventory", "/utilization", "/location-map", "/transfers", "/products", "/locations", "/barcodes", "/logs", "/import"];
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).catch(() => undefined));
