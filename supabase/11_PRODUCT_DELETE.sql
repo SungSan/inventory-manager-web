@@ -1,6 +1,7 @@
 -- SAN WMS - 안전한 상품 삭제
 -- DATA-PRESERVING MIGRATION: 삭제 버튼으로 선택한 미사용 상품만 삭제합니다.
 -- 현재 재고, 입출고 이력, 재고이관 기록이 있는 상품은 삭제되지 않습니다.
+-- 관리자와 매니저만 실행할 수 있습니다.
 
 create or replace function public.admin_delete_unused_product(
   p_product_id uuid
@@ -19,7 +20,9 @@ declare
   v_label text;
 begin
   if auth.uid() is null then raise exception '로그인이 필요합니다.'; end if;
-  if public.current_role()<>'admin' then raise exception '관리자만 상품을 삭제할 수 있습니다.'; end if;
+  if public.current_role() not in ('admin','manager') then
+    raise exception '관리자 또는 매니저만 상품을 삭제할 수 있습니다.';
+  end if;
 
   select * into v_product
   from public.products
@@ -64,14 +67,12 @@ begin
     'PRODUCT_DELETED','product',v_product.id::text,v_label,
     to_jsonb(v_product),
     jsonb_build_object('deleted',true,'barcode_count',v_barcode_count),
-    '상품관리 화면에서 관리자 삭제'
+    '상품관리 화면에서 관리자 또는 매니저 삭제'
   );
 
-  -- 수량 0인 잔여 행은 삭제한다.
   delete from public.inventory_balances
   where product_id=p_product_id;
 
-  -- 과거 스캔 로그는 유지하되 삭제되는 scan_target 참조만 제거한다.
   update public.scan_events
   set scan_target_id=null
   where scan_target_id=v_product.scan_target_id;
