@@ -1,0 +1,15 @@
+name: Verify stocktake V3.8.1
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          show-progress: false
+      - name: Install dependencies
+        run: npm install --silent
+      - name: Build
+        run: npm run build
