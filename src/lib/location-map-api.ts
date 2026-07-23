@@ -2,6 +2,7 @@ import { getSupabaseClient, isDemoMode } from "@/lib/supabase";
 import type { Location } from "@/types/domain";
 
 export type ActiveTransferRole = "SOURCE" | "DESTINATION" | "BOTH";
+export type MapInventoryCountStatus = "COMPLETE" | "DUE_SOON" | "DUE" | "NEVER" | "PLANNED" | "IN_PROGRESS";
 
 export interface LocationMapState {
   locationId: string;
@@ -9,6 +10,15 @@ export interface LocationMapState {
   unavailableReason?: string;
   activeTransferCount: number;
   activeTransferRole?: ActiveTransferRole;
+  activeStocktakeCount: number;
+  activeStocktakeSessionId?: string;
+  activeStocktakeCountNo?: string;
+  inventoryCountStatus?: MapInventoryCountStatus;
+  lastCountedAt?: string;
+  nextDueAt?: string;
+  movementCountSinceCount: number;
+  transferMovementCountSinceCount: number;
+  movedQtySinceCount: number;
 }
 
 export interface LocationMapZoneSetting {
@@ -75,12 +85,22 @@ export async function listLocationMapStates(): Promise<LocationMapState[]> {
   return asArray(data).map((value) => {
     const row = asRecord(value);
     const role = optionalString(row.active_transfer_role ?? row.activeTransferRole);
+    const countStatus = optionalString(row.inventory_count_status ?? row.inventoryCountStatus);
     return {
       locationId: String(row.location_id ?? row.locationId ?? ""),
       unavailable: Boolean(row.unavailable),
       unavailableReason: optionalString(row.unavailable_reason ?? row.unavailableReason),
       activeTransferCount: Number(row.active_transfer_count ?? row.activeTransferCount ?? 0),
       activeTransferRole: role as ActiveTransferRole | undefined,
+      activeStocktakeCount: Number(row.active_stocktake_count ?? row.activeStocktakeCount ?? 0),
+      activeStocktakeSessionId: optionalString(row.active_stocktake_session_id ?? row.activeStocktakeSessionId),
+      activeStocktakeCountNo: optionalString(row.active_stocktake_count_no ?? row.activeStocktakeCountNo),
+      inventoryCountStatus: countStatus as MapInventoryCountStatus | undefined,
+      lastCountedAt: optionalString(row.last_counted_at ?? row.lastCountedAt),
+      nextDueAt: optionalString(row.next_due_at ?? row.nextDueAt),
+      movementCountSinceCount: Number(row.movement_count_since_count ?? row.movementCountSinceCount ?? 0),
+      transferMovementCountSinceCount: Number(row.transfer_movement_count_since_count ?? row.transferMovementCountSinceCount ?? 0),
+      movedQtySinceCount: Number(row.moved_qty_since_count ?? row.movedQtySinceCount ?? 0),
     };
   }).filter((row) => row.locationId);
 }

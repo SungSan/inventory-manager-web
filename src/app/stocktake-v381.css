@@ -1,0 +1,72 @@
+.stocktake-admin-cleanup,
+.stocktake-verification-panel {
+  order: -1;
+}
+
+.stocktake-cleanup-list {
+  display: grid;
+  gap: 8px;
+}
+
+.stocktake-cleanup-list article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid #dce2e8;
+  border-radius: 11px;
+  background: #fff;
+}
+
+.stocktake-cleanup-list article div {
+  display: grid;
+  gap: 3px;
+}
+
+.stocktake-cleanup-list article span {
+  color: #667085;
+  font-size: 12px;
+}
+
+.stocktake-verification-panel {
+  border-color: #f2c94c;
+  background: #fffdf5;
+}
+
+.stocktake-unverified-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #f4c95d;
+  border-radius: 10px;
+  background: #fff8df;
+}
+
+.stocktake-unverified-list > strong {
+  width: 100%;
+  color: #7a4b00;
+}
+
+.stocktake-unverified-list span {
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #fff;
+  color: #7a4b00;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.stocktake-unverified-list small {
+  align-self: center;
+  color: #7a4b00;
+}
+
+@media (max-width: 720px) {
+  .stocktake-cleanup-list article {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

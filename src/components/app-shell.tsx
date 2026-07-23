@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { AuthGate } from "@/components/auth-gate";
+import { StocktakeLiveEnhancer } from "@/components/stocktake-live-enhancer";
 import { useUser } from "@/components/user-provider";
 import { hasPermission, roleLabels, type Permission } from "@/lib/permissions";
 import { isDemoMode, getSupabaseClient } from "@/lib/supabase";
@@ -43,37 +44,20 @@ function ShellContent({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="app-layout">
+      <StocktakeLiveEnhancer />
       <header className="topbar">
-        <div>
-          <p className="eyebrow">SAN WMS · V3.8.0</p>
-          <h1>재고관리</h1>
-        </div>
+        <div><p className="eyebrow">SAN WMS · V3.8.1</p><h1>재고관리</h1></div>
         <div className="topbar-meta">
           <span className={`mode-badge ${isDemoMode() ? "demo" : "live"}`}>{isDemoMode() ? "DEMO" : "LIVE"}</span>
           {user ? <span className="user-chip">{user.displayName} · {roleLabels[user.role]}</span> : null}
-          {isDemoMode() && user ? (
-            <select className="user-switch" value={user.id} onChange={(event) => void switchDemoUser(event.target.value)} aria-label="데모 사용자 변경">
-              {users.map((item) => <option key={item.id} value={item.id}>{item.displayName} ({roleLabels[item.role]})</option>)}
-            </select>
-          ) : null}
-          {!isDemoMode() ? (
-            <button className="button button-compact button-secondary" onClick={() => void getSupabaseClient()?.auth.signOut()}>로그아웃</button>
-          ) : null}
+          {isDemoMode() && user ? <select className="user-switch" value={user.id} onChange={(event) => void switchDemoUser(event.target.value)} aria-label="데모 사용자 변경">{users.map((item) => <option key={item.id} value={item.id}>{item.displayName} ({roleLabels[item.role]})</option>)}</select> : null}
+          {!isDemoMode() ? <button className="button button-compact button-secondary" onClick={() => void getSupabaseClient()?.auth.signOut()}>로그아웃</button> : null}
         </div>
       </header>
-
-      <nav className="main-nav" aria-label="주요 메뉴">
-        {visibleNav.map((item) => (
-          <Link key={item.href} href={item.href} className={pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href)) ? "active" : ""}>
-            {item.label}
-          </Link>
-        ))}
-      </nav>
+      <nav className="main-nav" aria-label="주요 메뉴">{visibleNav.map((item) => <Link key={item.href} href={item.href} className={pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href)) ? "active" : ""}>{item.label}</Link>)}</nav>
       <main className="content">{children}</main>
     </div>
   );
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
-  return <AuthGate><ShellContent>{children}</ShellContent></AuthGate>;
-}
+export function AppShell({ children }: { children: React.ReactNode }) { return <AuthGate><ShellContent>{children}</ShellContent></AuthGate>; }
