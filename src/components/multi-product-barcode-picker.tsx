@@ -32,10 +32,9 @@ function productFromMatch(match: ResolvedBarcode): Product | null {
 export function MultiProductBarcodePicker({
   matches,
   title = "상품을 복수 선택하세요",
-  description = "같은 바코드에 연결된 상품 중 필요한 품목을 체크하고 수량을 각각 입력하세요.",
+  description = "같은 바코드에 연결된 상품 중 작업할 품목을 체크하세요. 수량은 선택 후 품목 목록에서 변경할 수 있습니다.",
   confirmLabel = "선택 상품 적용",
   initialQuantities = EMPTY_QUANTITIES,
-  maxQuantities = EMPTY_QUANTITIES,
   busy = false,
   onConfirm,
   onClose,
@@ -50,39 +49,17 @@ export function MultiProductBarcodePicker({
   }, [matches]);
 
   const [selected, setSelected] = useState<Record<string, boolean>>({});
-  const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const nextSelected: Record<string, boolean> = {};
-    const nextQuantities: Record<string, number> = {};
-    for (const { product } of products) {
-      nextSelected[product.id] = true;
-      const initial = Math.max(1, Math.trunc(initialQuantities[product.id] ?? 1));
-      const max = maxQuantities[product.id];
-      nextQuantities[product.id] = max === undefined ? initial : Math.min(Math.max(1, max), initial);
-    }
-    setSelected(nextSelected);
-    setQuantities(nextQuantities);
+    setSelected(Object.fromEntries(products.map(({ product }) => [product.id, true])));
     setError("");
-  }, [initialQuantities, maxQuantities, products]);
+  }, [products]);
 
   const selectedCount = products.filter(({ product }) => selected[product.id]).length;
-  const selectedQty = products.reduce(
-    (sum, { product }) => sum + (selected[product.id] ? quantities[product.id] ?? 0 : 0),
-    0,
-  );
 
   function setAll(value: boolean) {
     setSelected(Object.fromEntries(products.map(({ product }) => [product.id, value])));
-  }
-
-  function changeQuantity(productId: string, raw: string) {
-    const parsed = Number(raw);
-    const max = maxQuantities[productId];
-    let qty = Number.isFinite(parsed) ? Math.max(1, Math.trunc(parsed)) : 1;
-    if (max !== undefined) qty = Math.min(Math.max(1, max), qty);
-    setQuantities((current) => ({ ...current, [productId]: qty }));
   }
 
   async function confirm() {
@@ -91,20 +68,11 @@ export function MultiProductBarcodePicker({
       .map(({ match, product }) => ({
         match,
         product,
-        qty: Math.max(1, Math.trunc(quantities[product.id] ?? 1)),
+        qty: Math.max(1, Math.trunc(initialQuantities[product.id] ?? 1)),
       }));
 
     if (items.length === 0) {
       setError("상품을 하나 이상 선택하세요.");
-      return;
-    }
-
-    const invalid = items.find(({ product, qty }) => {
-      const max = maxQuantities[product.id];
-      return qty < 1 || (max !== undefined && qty > max);
-    });
-    if (invalid) {
-      setError(`${invalid.product.artist} · ${invalid.product.nameVer}의 수량을 확인하세요.`);
       return;
     }
 
@@ -129,13 +97,12 @@ export function MultiProductBarcodePicker({
             <button className="button button-secondary button-compact" onClick={() => setAll(true)} disabled={busy}>전체 선택</button>
             <button className="button button-ghost button-compact" onClick={() => setAll(false)} disabled={busy}>전체 해제</button>
           </div>
-          <strong>{selectedCount} SKU / {selectedQty.toLocaleString()}개</strong>
+          <strong>{selectedCount} SKU 선택</strong>
         </div>
 
         <div className="multi-product-picker-list">
           {products.map(({ product }) => {
             const checked = Boolean(selected[product.id]);
-            const max = maxQuantities[product.id];
             return (
               <article key={product.id} className={`multi-product-picker-row ${checked ? "selected" : ""}`}>
                 <label className="multi-product-picker-check">
@@ -143,25 +110,13 @@ export function MultiProductBarcodePicker({
                     type="checkbox"
                     checked={checked}
                     onChange={(event) => setSelected((current) => ({ ...current, [product.id]: event.target.checked }))}
-                    disabled={busy || max === 0}
+                    disabled={busy}
                   />
                   <span>
                     <strong>{product.artist || "아티스트 없음"}</strong>
                     <b>{product.nameVer || "상품명/버전 없음"}</b>
                     <small>{product.pCodeNo || "-"} · {product.codeNo || "-"}</small>
                   </span>
-                </label>
-                <label className="multi-product-picker-qty">
-                  수량
-                  <input
-                    type="number"
-                    min={1}
-                    max={max}
-                    value={quantities[product.id] ?? 1}
-                    onChange={(event) => changeQuantity(product.id, event.target.value)}
-                    disabled={!checked || busy || max === 0}
-                  />
-                  {max !== undefined ? <small>최대 {max.toLocaleString()}개</small> : null}
                 </label>
               </article>
             );
