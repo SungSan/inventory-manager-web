@@ -583,15 +583,14 @@
 }
 
 @media print {
-  :global(.topbar),
-  :global(.main-nav),
   .documentActions {
     display: none !important;
   }
 
-  :global(.content) { padding: 0 !important; }
-  :global(body), :global(html), :global(.app-layout) { background: #fff !important; }
-  .documentPage { display: block; }
+  .documentPage {
+    display: block;
+  }
+
   .printSheet { width: 100%; margin: 0; padding: 0; border: 0; box-shadow: none; }
   .documentTable th, .documentTable td { font-size: 9px; padding: 6px 4px; }
   .documentTable tr, .documentInfoGrid, .documentNote { break-inside: avoid; }

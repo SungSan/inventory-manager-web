@@ -50,6 +50,11 @@ function ExternalShipmentDocumentContent() {
 
   return (
     <div className={styles.documentPage}>
+      <style>{`@media print {
+        .topbar, .main-nav { display: none !important; }
+        .content { padding: 0 !important; }
+        body, html, .app-layout { background: #fff !important; }
+      }`}</style>
       <div className={styles.documentActions}>
         <Link className="button button-secondary" href="/external-transfers">명세서 목록</Link>
         <button className="button button-primary" onClick={() => window.print()}>
