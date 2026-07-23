@@ -5,6 +5,8 @@ import "@/app/transfer.css";
 import "@/app/v1-4.css";
 import "@/app/location-map.css";
 import "@/app/location-map-states.css";
+import "@/app/multi-product-picker.css";
+import "@/app/external-shipment-print.css";
 import { AppShell } from "@/components/app-shell";
 import { PwaRegister } from "@/components/pwa-register";
 
