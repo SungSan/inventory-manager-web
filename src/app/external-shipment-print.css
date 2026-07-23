@@ -3,7 +3,6 @@
   margin: 0;
 }
 
-/* 화면에서도 실제 A4 세로 용지와 같은 비율·배치를 사용합니다. */
 html body [data-print-sheet="external-shipment"] {
   box-sizing: border-box !important;
   width: 210mm !important;
@@ -20,16 +19,18 @@ html body [data-print-sheet="external-shipment"] {
 
 html body [data-print-sheet="external-shipment"] > header {
   display: grid !important;
-  grid-template-columns: 45mm minmax(0, 1fr) 40mm !important;
+  grid-template-columns: 43mm minmax(0, 1fr) 39mm !important;
   gap: 4mm !important;
   align-items: center !important;
   padding-bottom: 4mm !important;
+  border-bottom: 1mm solid #102f4a !important;
   text-align: initial !important;
 }
 
 html body [data-print-sheet="external-shipment"] > header img {
-  width: 45mm !important;
-  max-width: 100% !important;
+  display: block !important;
+  width: 43mm !important;
+  max-width: 43mm !important;
   height: auto !important;
   margin: 0 !important;
   object-fit: contain !important;
@@ -37,6 +38,7 @@ html body [data-print-sheet="external-shipment"] > header img {
 }
 
 html body [data-print-sheet="external-shipment"] > header h1 {
+  margin: 0 !important;
   font-size: 23px !important;
   letter-spacing: .22em !important;
 }
@@ -46,11 +48,14 @@ html body [data-print-sheet="external-shipment"] > header span {
   font-size: 9px !important;
 }
 
+html body [data-print-sheet="external-shipment"] > header > div:nth-child(2) {
+  text-align: center !important;
+}
+
 html body [data-print-sheet="external-shipment"] > header > div:last-child {
   text-align: right !important;
 }
 
-/* 출고정보 표: 화면과 출력 모두 항상 4열 유지 */
 html body [data-print-sheet="external-shipment"] > header + section {
   display: grid !important;
   grid-template-columns: 25mm minmax(0, 1fr) 27mm minmax(0, 1fr) !important;
@@ -68,7 +73,6 @@ html body [data-print-sheet="external-shipment"] > header + section > div:last-c
   grid-column: span 3 !important;
 }
 
-/* SKU를 더 많이 담도록 표의 여백과 글자 크기를 축소 */
 html body [data-print-sheet="external-shipment"] > table {
   width: 100% !important;
   min-width: 0 !important;
@@ -80,19 +84,18 @@ html body [data-print-sheet="external-shipment"] > table {
 html body [data-print-sheet="external-shipment"] > table th,
 html body [data-print-sheet="external-shipment"] > table td {
   padding: 1.35mm .8mm !important;
-  font-size: 8.3px !important;
+  font-size: 8.4px !important;
   line-height: 1.25 !important;
   overflow-wrap: anywhere !important;
 }
 
 html body [data-print-sheet="external-shipment"] > table thead th:nth-child(1) { width: 5% !important; }
-html body [data-print-sheet="external-shipment"] > table thead th:nth-child(2) { width: 29% !important; }
-html body [data-print-sheet="external-shipment"] > table thead th:nth-child(3) { width: 14% !important; }
-html body [data-print-sheet="external-shipment"] > table thead th:nth-child(4) { width: 11% !important; }
-html body [data-print-sheet="external-shipment"] > table thead th:nth-child(5) { width: 11% !important; }
-html body [data-print-sheet="external-shipment"] > table thead th:nth-child(6) { width: 17% !important; }
-html body [data-print-sheet="external-shipment"] > table thead th:nth-child(7) { width: 6% !important; }
-html body [data-print-sheet="external-shipment"] > table thead th:nth-child(8) { width: 7% !important; }
+html body [data-print-sheet="external-shipment"] > table thead th:nth-child(2) { width: 32% !important; }
+html body [data-print-sheet="external-shipment"] > table thead th:nth-child(3) { width: 15% !important; }
+html body [data-print-sheet="external-shipment"] > table thead th:nth-child(4) { width: 12% !important; }
+html body [data-print-sheet="external-shipment"] > table thead th:nth-child(5) { width: 12% !important; }
+html body [data-print-sheet="external-shipment"] > table thead th:nth-child(6) { width: 8% !important; }
+html body [data-print-sheet="external-shipment"] > table thead th:nth-child(7) { width: 16% !important; }
 
 html body [data-print-sheet="external-shipment"] > table td:nth-child(2) {
   text-align: left !important;
@@ -135,7 +138,6 @@ html body [data-print-sheet="external-shipment"] > footer > p {
   html,
   body {
     width: 210mm !important;
-    height: auto !important;
     min-height: 297mm !important;
     margin: 0 !important;
     padding: 0 !important;
@@ -147,16 +149,7 @@ html body [data-print-sheet="external-shipment"] > footer > p {
     display: none !important;
   }
 
-  [data-print-sheet="external-shipment"],
-  [data-print-sheet="external-shipment"] * {
-    visibility: visible !important;
-  }
-
   html body [data-print-sheet="external-shipment"] {
-    position: absolute !important;
-    top: 0 !important;
-    left: 0 !important;
-    display: block !important;
     width: 210mm !important;
     max-width: 210mm !important;
     min-height: 297mm !important;
@@ -164,24 +157,5 @@ html body [data-print-sheet="external-shipment"] > footer > p {
     padding: 8mm !important;
     border: 0 !important;
     box-shadow: none !important;
-  }
-
-  html body [data-print-sheet="external-shipment"] > header,
-  html body [data-print-sheet="external-shipment"] > header + section,
-  html body [data-print-sheet="external-shipment"] > table + section,
-  html body [data-print-sheet="external-shipment"] > footer {
-    break-inside: avoid !important;
-  }
-
-  html body [data-print-sheet="external-shipment"] > table {
-    min-width: 0 !important;
-  }
-
-  html body [data-print-sheet="external-shipment"] > table thead {
-    display: table-header-group !important;
-  }
-
-  html body [data-print-sheet="external-shipment"] > table tr {
-    break-inside: avoid !important;
   }
 }
