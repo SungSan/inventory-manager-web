@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { CameraSearchField } from "@/components/camera-search-field";
 import { PermissionGuard } from "@/components/permission-guard";
 import { downloadCsv } from "@/lib/csv";
 import { listBarcodes, listInventory, subscribeToInventory } from "@/lib/inventory-api";
@@ -277,7 +278,14 @@ function InventoryContent() {
       </section>
 
       <section className="panel filter-row">
-        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="상품 바코드, CODE_NO, 아티스트, 상품명/버전, 로케이션" />
+        <div style={{ flex: "1 1 360px" }}>
+          <CameraSearchField
+            label="검색"
+            value={search}
+            onChange={setSearch}
+            placeholder="상품 바코드, CODE_NO, 아티스트, 상품명/버전, 로케이션"
+          />
+        </div>
         <label className="checkbox-label"><input type="checkbox" checked={showZero} onChange={(event) => setShowZero(event.target.checked)} />0 재고 포함</label>
         <button className="button button-secondary" onClick={exportRows}>CSV 내보내기</button>
       </section>
