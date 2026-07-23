@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PermissionGuard } from "@/components/permission-guard";
+import { listLocationMapStates } from "@/lib/location-map-api";
 import {
   createInventoryCountSession,
   getInventoryCountDashboard,
@@ -34,8 +35,8 @@ function formatDate(value?: string): string {
   return value ? new Date(value).toLocaleDateString("ko-KR") : "-";
 }
 
-function activeDashboard(source: InventoryCountDashboard): InventoryCountDashboard {
-  const locations = source.locations.filter((row) => row.active);
+function availableDashboard(source: InventoryCountDashboard, unavailableIds: Set<string>): InventoryCountDashboard {
+  const locations = source.locations.filter((row) => !unavailableIds.has(row.locationId));
   const count = (status: InventoryCountStatus) => locations.filter((row) => row.countStatus === status).length;
   return {
     ...source,
@@ -66,7 +67,12 @@ function StocktakesContent() {
 
   const load = useCallback(async () => {
     try {
-      setDashboard(activeDashboard(await getInventoryCountDashboard()));
+      const [source, mapStates] = await Promise.all([
+        getInventoryCountDashboard(),
+        listLocationMapStates(),
+      ]);
+      const unavailableIds = new Set(mapStates.filter((row) => row.unavailable).map((row) => row.locationId));
+      setDashboard(availableDashboard(source, unavailableIds));
       setError("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "재고실사 현황을 불러오지 못했습니다.");
@@ -106,7 +112,7 @@ function StocktakesContent() {
 
   return (
     <div className={`page-stack ${styles.page}`}>
-      <section><p className="eyebrow">CYCLE COUNT</p><h2>재고실사</h2><p className="muted">로케이션별 실사 이력과 3개월 재실사 주기를 관리합니다. 사용불가 LOC는 대상에서 제외되며, 실사 시작 후 완료·취소 전까지 해당 LOC의 입고·출고·이관은 잠깁니다.</p></section>
+      <section><p className="eyebrow">CYCLE COUNT</p><h2>재고실사</h2><p className="muted">로케이션별 실사 이력과 3개월 재실사 주기를 관리합니다. 로케이션 맵에서 사용불가로 지정한 LOC는 대상에서 제외되며, 실사 시작 후 완료·취소 전까지 해당 LOC의 입고·출고·이관은 잠깁니다.</p></section>
       {error ? <p className="inline-error">{error}</p> : null}
       {message ? <div className="feedback feedback-success"><strong>{message}</strong></div> : null}
       <section className={styles.metricGrid}>
