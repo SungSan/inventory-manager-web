@@ -1,12 +1,12 @@
 "use client";
 
 import { PermissionGuard } from "@/components/permission-guard";
-import { ScanWorkflowV3 } from "@/components/scan-workflow-v3";
+import { ScanWorkflowV4 } from "@/components/scan-workflow-v4";
 
 export default function ScanPage() {
   return (
     <PermissionGuard permission="scan_inventory">
-      <ScanWorkflowV3 />
+      <ScanWorkflowV4 />
     </PermissionGuard>
   );
 }
