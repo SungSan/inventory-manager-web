@@ -8,6 +8,7 @@ import "@/app/location-map-states.css";
 import "@/app/multi-product-picker.css";
 import "@/app/external-shipment-print.css";
 import { AppShell } from "@/components/app-shell";
+import { NumericInputBehavior } from "@/components/numeric-input-behavior";
 import { PwaRegister } from "@/components/pwa-register";
 
 export const metadata: Metadata = {
@@ -24,5 +25,5 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="ko"><body><PwaRegister /><AppShell>{children}</AppShell></body></html>;
+  return <html lang="ko"><body><PwaRegister /><NumericInputBehavior /><AppShell>{children}</AppShell></body></html>;
 }

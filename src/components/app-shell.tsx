@@ -13,6 +13,7 @@ import type { UserProfile } from "@/types/domain";
 const nav: Array<{ href: string; label: string; permission: Permission }> = [
   { href: "/", label: "대시보드", permission: "view_dashboard" },
   { href: "/scan", label: "입고·출고", permission: "scan_inventory" },
+  { href: "/stocktakes", label: "재고실사", permission: "stocktake_inventory" },
   { href: "/inventory", label: "재고조회", permission: "view_inventory" },
   { href: "/utilization", label: "용적률", permission: "view_inventory" },
   { href: "/location-map", label: "로케이션맵", permission: "view_inventory" },
@@ -44,7 +45,7 @@ function ShellContent({ children }: { children: React.ReactNode }) {
     <div className="app-layout">
       <header className="topbar">
         <div>
-          <p className="eyebrow">SAN WMS · V3.7.0</p>
+          <p className="eyebrow">SAN WMS · V3.8.0</p>
           <h1>재고관리</h1>
         </div>
         <div className="topbar-meta">
