@@ -2,290 +2,38 @@ import { getSupabaseClient, isDemoMode } from "@/lib/supabase";
 
 export type InventoryCountStatus = "COMPLETE" | "DUE_SOON" | "DUE" | "NEVER" | "PLANNED" | "IN_PROGRESS";
 
-export interface InventoryCountSummary {
-  total: number;
-  complete: number;
-  dueSoon: number;
-  due: number;
-  never: number;
-  planned: number;
-  inProgress: number;
-}
+export interface InventoryCountSummary { total: number; complete: number; dueSoon: number; due: number; never: number; planned: number; inProgress: number; }
+export interface InventoryCountLocationStatus { locationId: string; locationCode: string; zone: string; active: boolean; openSessionId?: string; openCountNo?: string; openLocationStatus?: string; lastCountedAt?: string; nextDueAt?: string; lastDifferenceSkuCount: number; lastDifferenceQty: number; countStatus: InventoryCountStatus; }
+export interface InventoryCountSessionSummary { id: string; countNo: string; scopeType: "ALL" | "ZONE" | "LOCATIONS" | "DUE"; scopeValue: string; status: "IN_PROGRESS" | "COMPLETED" | "CANCELLED"; note: string; createdAt: string; completedAt?: string; cancelledAt?: string; targetCount: number; completedCount: number; inProgressCount: number; pendingCount: number; differenceSkuCount: number; differenceQty: number; }
+export interface InventoryCountDashboard { summary: InventoryCountSummary; locations: InventoryCountLocationStatus[]; sessions: InventoryCountSessionSummary[]; }
+export interface InventoryCountSessionLocation { sessionId: string; locationId: string; locationCode: string; zone: string; status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED"; systemSkuCount: number | null; isCurrentlyEmpty?: boolean; countedSkuCount: number; differenceSkuCount: number; differenceQty: number; startedAt?: string; completedAt?: string; nextDueAt?: string; }
+export interface InventoryCountSessionDetail { id: string; countNo: string; scopeType: string; scopeValue: string; status: "IN_PROGRESS" | "COMPLETED" | "CANCELLED"; note: string; createdAt: string; completedAt?: string; cancelledAt?: string; locations: InventoryCountSessionLocation[]; }
+export interface InventoryCountItem { productId: string; pCodeNo: string; codeNo: string; masterCodeNo: string; artist: string; nameVer: string; systemQty: number; countedQty: number | null; differenceQty: number | null; note: string; countedAt?: string; }
+export interface InventoryCountLocationDetail { sessionId: string; countNo: string; sessionStatus: string; locationId: string; locationCode: string; zone: string; status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED"; systemSkuCount: number; countedSkuCount: number; differenceSkuCount: number; differenceQty: number; startedAt?: string; completedAt?: string; nextDueAt?: string; items: InventoryCountItem[]; }
 
-export interface InventoryCountLocationStatus {
-  locationId: string;
-  locationCode: string;
-  zone: string;
-  active: boolean;
-  openSessionId?: string;
-  openCountNo?: string;
-  openLocationStatus?: string;
-  lastCountedAt?: string;
-  nextDueAt?: string;
-  lastDifferenceSkuCount: number;
-  lastDifferenceQty: number;
-  countStatus: InventoryCountStatus;
-}
+function client() { const supabase = getSupabaseClient(); if (!supabase) throw new Error("Supabase 연결 설정을 확인하세요."); return supabase; }
+function ensureLiveMode() { if (isDemoMode()) throw new Error("재고실사는 LIVE 모드에서만 사용할 수 있습니다."); }
+function asRecord(value: unknown): Record<string, unknown> { return value && typeof value === "object" ? value as Record<string, unknown> : {}; }
+function asArray(value: unknown): Record<string, unknown>[] { return Array.isArray(value) ? value.map(asRecord) : []; }
+function text(value: unknown): string { return value == null ? "" : String(value); }
+function optionalText(value: unknown): string | undefined { const result = text(value); return result || undefined; }
+function numberValue(value: unknown): number { const result = Number(value ?? 0); return Number.isFinite(result) ? result : 0; }
+function nullableNumber(value: unknown): number | null { if (value == null) return null; const result = Number(value); return Number.isFinite(result) ? result : null; }
 
-export interface InventoryCountSessionSummary {
-  id: string;
-  countNo: string;
-  scopeType: "ALL" | "ZONE" | "LOCATIONS" | "DUE";
-  scopeValue: string;
-  status: "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
-  note: string;
-  createdAt: string;
-  completedAt?: string;
-  cancelledAt?: string;
-  targetCount: number;
-  completedCount: number;
-  inProgressCount: number;
-  pendingCount: number;
-  differenceSkuCount: number;
-  differenceQty: number;
-}
+function mapLocationStatus(row: Record<string, unknown>): InventoryCountLocationStatus { return { locationId: text(row.location_id), locationCode: text(row.location_code), zone: text(row.zone), active: Boolean(row.active), openSessionId: optionalText(row.open_session_id), openCountNo: optionalText(row.open_count_no), openLocationStatus: optionalText(row.open_location_status), lastCountedAt: optionalText(row.last_counted_at), nextDueAt: optionalText(row.next_due_at), lastDifferenceSkuCount: numberValue(row.last_difference_sku_count), lastDifferenceQty: numberValue(row.last_difference_qty), countStatus: text(row.count_status || "NEVER") as InventoryCountStatus }; }
+function mapSession(row: Record<string, unknown>): InventoryCountSessionSummary { return { id: text(row.id), countNo: text(row.count_no), scopeType: text(row.scope_type || "ALL") as InventoryCountSessionSummary["scopeType"], scopeValue: text(row.scope_value), status: text(row.status || "IN_PROGRESS") as InventoryCountSessionSummary["status"], note: text(row.note), createdAt: text(row.created_at), completedAt: optionalText(row.completed_at), cancelledAt: optionalText(row.cancelled_at), targetCount: numberValue(row.target_count), completedCount: numberValue(row.completed_count), inProgressCount: numberValue(row.in_progress_count), pendingCount: numberValue(row.pending_count), differenceSkuCount: numberValue(row.difference_sku_count), differenceQty: numberValue(row.difference_qty) }; }
+function mapSessionLocation(row: Record<string, unknown>): InventoryCountSessionLocation { const status = text(row.status || "PENDING") as InventoryCountSessionLocation["status"]; const systemSkuCount = status === "PENDING" ? nullableNumber(row.system_sku_count) : numberValue(row.system_sku_count); return { sessionId: text(row.session_id), locationId: text(row.location_id), locationCode: text(row.location_code), zone: text(row.zone), status, systemSkuCount, isCurrentlyEmpty: row.is_currently_empty === true, countedSkuCount: numberValue(row.counted_sku_count), differenceSkuCount: numberValue(row.difference_sku_count), differenceQty: numberValue(row.difference_qty), startedAt: optionalText(row.started_at), completedAt: optionalText(row.completed_at), nextDueAt: optionalText(row.next_due_at) }; }
+function mapLocationDetail(value: unknown): InventoryCountLocationDetail { const row = asRecord(value); return { sessionId: text(row.session_id), countNo: text(row.count_no), sessionStatus: text(row.session_status), locationId: text(row.location_id), locationCode: text(row.location_code), zone: text(row.zone), status: text(row.status || "PENDING") as InventoryCountLocationDetail["status"], systemSkuCount: numberValue(row.system_sku_count), countedSkuCount: numberValue(row.counted_sku_count), differenceSkuCount: numberValue(row.difference_sku_count), differenceQty: numberValue(row.difference_qty), startedAt: optionalText(row.started_at), completedAt: optionalText(row.completed_at), nextDueAt: optionalText(row.next_due_at), items: asArray(row.items).map((item) => ({ productId: text(item.product_id), pCodeNo: text(item.p_code_no), codeNo: text(item.code_no), masterCodeNo: text(item.master_code_no), artist: text(item.artist), nameVer: text(item.name_ver), systemQty: numberValue(item.system_qty), countedQty: item.counted_qty == null ? null : numberValue(item.counted_qty), differenceQty: item.difference_qty == null ? null : numberValue(item.difference_qty), note: text(item.note), countedAt: optionalText(item.counted_at) })) }; }
+function mapSessionDetail(value: unknown): InventoryCountSessionDetail { const row = asRecord(value); return { id: text(row.id), countNo: text(row.count_no), scopeType: text(row.scope_type), scopeValue: text(row.scope_value), status: text(row.status || "IN_PROGRESS") as InventoryCountSessionDetail["status"], note: text(row.note), createdAt: text(row.created_at), completedAt: optionalText(row.completed_at), cancelledAt: optionalText(row.cancelled_at), locations: asArray(row.locations).map(mapSessionLocation) }; }
 
-export interface InventoryCountDashboard {
-  summary: InventoryCountSummary;
-  locations: InventoryCountLocationStatus[];
-  sessions: InventoryCountSessionSummary[];
-}
-
-export interface InventoryCountSessionLocation {
-  sessionId: string;
-  locationId: string;
-  locationCode: string;
-  zone: string;
-  status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
-  systemSkuCount: number;
-  countedSkuCount: number;
-  differenceSkuCount: number;
-  differenceQty: number;
-  startedAt?: string;
-  completedAt?: string;
-  nextDueAt?: string;
-}
-
-export interface InventoryCountSessionDetail {
-  id: string;
-  countNo: string;
-  scopeType: string;
-  scopeValue: string;
-  status: "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
-  note: string;
-  createdAt: string;
-  completedAt?: string;
-  cancelledAt?: string;
-  locations: InventoryCountSessionLocation[];
-}
-
-export interface InventoryCountItem {
-  productId: string;
-  pCodeNo: string;
-  codeNo: string;
-  masterCodeNo: string;
-  artist: string;
-  nameVer: string;
-  systemQty: number;
-  countedQty: number | null;
-  differenceQty: number | null;
-  note: string;
-  countedAt?: string;
-}
-
-export interface InventoryCountLocationDetail {
-  sessionId: string;
-  countNo: string;
-  sessionStatus: string;
-  locationId: string;
-  locationCode: string;
-  zone: string;
-  status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
-  systemSkuCount: number;
-  countedSkuCount: number;
-  differenceSkuCount: number;
-  differenceQty: number;
-  startedAt?: string;
-  completedAt?: string;
-  nextDueAt?: string;
-  items: InventoryCountItem[];
-}
-
-function client() {
-  const supabase = getSupabaseClient();
-  if (!supabase) throw new Error("Supabase 연결 설정을 확인하세요.");
-  return supabase;
-}
-
-function ensureLiveMode() {
-  if (isDemoMode()) throw new Error("재고실사는 LIVE 모드에서만 사용할 수 있습니다.");
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" ? value as Record<string, unknown> : {};
-}
-
-function asArray(value: unknown): Record<string, unknown>[] {
-  return Array.isArray(value) ? value.map(asRecord) : [];
-}
-
-function text(value: unknown): string {
-  return value == null ? "" : String(value);
-}
-
-function optionalText(value: unknown): string | undefined {
-  const result = text(value);
-  return result || undefined;
-}
-
-function numberValue(value: unknown): number {
-  const result = Number(value ?? 0);
-  return Number.isFinite(result) ? result : 0;
-}
-
-function mapLocationStatus(row: Record<string, unknown>): InventoryCountLocationStatus {
-  return {
-    locationId: text(row.location_id), locationCode: text(row.location_code), zone: text(row.zone), active: Boolean(row.active),
-    openSessionId: optionalText(row.open_session_id), openCountNo: optionalText(row.open_count_no), openLocationStatus: optionalText(row.open_location_status),
-    lastCountedAt: optionalText(row.last_counted_at), nextDueAt: optionalText(row.next_due_at),
-    lastDifferenceSkuCount: numberValue(row.last_difference_sku_count), lastDifferenceQty: numberValue(row.last_difference_qty),
-    countStatus: text(row.count_status || "NEVER") as InventoryCountStatus,
-  };
-}
-
-function mapSession(row: Record<string, unknown>): InventoryCountSessionSummary {
-  return {
-    id: text(row.id), countNo: text(row.count_no), scopeType: text(row.scope_type || "ALL") as InventoryCountSessionSummary["scopeType"],
-    scopeValue: text(row.scope_value), status: text(row.status || "IN_PROGRESS") as InventoryCountSessionSummary["status"],
-    note: text(row.note), createdAt: text(row.created_at), completedAt: optionalText(row.completed_at), cancelledAt: optionalText(row.cancelled_at),
-    targetCount: numberValue(row.target_count), completedCount: numberValue(row.completed_count), inProgressCount: numberValue(row.in_progress_count),
-    pendingCount: numberValue(row.pending_count), differenceSkuCount: numberValue(row.difference_sku_count), differenceQty: numberValue(row.difference_qty),
-  };
-}
-
-function mapSessionLocation(row: Record<string, unknown>): InventoryCountSessionLocation {
-  return {
-    sessionId: text(row.session_id), locationId: text(row.location_id), locationCode: text(row.location_code), zone: text(row.zone),
-    status: text(row.status || "PENDING") as InventoryCountSessionLocation["status"], systemSkuCount: numberValue(row.system_sku_count),
-    countedSkuCount: numberValue(row.counted_sku_count), differenceSkuCount: numberValue(row.difference_sku_count), differenceQty: numberValue(row.difference_qty),
-    startedAt: optionalText(row.started_at), completedAt: optionalText(row.completed_at), nextDueAt: optionalText(row.next_due_at),
-  };
-}
-
-function mapLocationDetail(value: unknown): InventoryCountLocationDetail {
-  const row = asRecord(value);
-  return {
-    sessionId: text(row.session_id), countNo: text(row.count_no), sessionStatus: text(row.session_status), locationId: text(row.location_id),
-    locationCode: text(row.location_code), zone: text(row.zone), status: text(row.status || "PENDING") as InventoryCountLocationDetail["status"],
-    systemSkuCount: numberValue(row.system_sku_count), countedSkuCount: numberValue(row.counted_sku_count),
-    differenceSkuCount: numberValue(row.difference_sku_count), differenceQty: numberValue(row.difference_qty),
-    startedAt: optionalText(row.started_at), completedAt: optionalText(row.completed_at), nextDueAt: optionalText(row.next_due_at),
-    items: asArray(row.items).map((item) => ({
-      productId: text(item.product_id), pCodeNo: text(item.p_code_no), codeNo: text(item.code_no), masterCodeNo: text(item.master_code_no),
-      artist: text(item.artist), nameVer: text(item.name_ver), systemQty: numberValue(item.system_qty),
-      countedQty: item.counted_qty == null ? null : numberValue(item.counted_qty),
-      differenceQty: item.difference_qty == null ? null : numberValue(item.difference_qty), note: text(item.note), countedAt: optionalText(item.counted_at),
-    })),
-  };
-}
-
-function mapSessionDetail(value: unknown): InventoryCountSessionDetail {
-  const row = asRecord(value);
-  return {
-    id: text(row.id), countNo: text(row.count_no), scopeType: text(row.scope_type), scopeValue: text(row.scope_value),
-    status: text(row.status || "IN_PROGRESS") as InventoryCountSessionDetail["status"], note: text(row.note), createdAt: text(row.created_at),
-    completedAt: optionalText(row.completed_at), cancelledAt: optionalText(row.cancelled_at), locations: asArray(row.locations).map(mapSessionLocation),
-  };
-}
-
-export async function getInventoryCountDashboard(): Promise<InventoryCountDashboard> {
-  ensureLiveMode();
-  const { data, error } = await client().rpc("get_inventory_count_dashboard");
-  if (error) throw new Error(error.message);
-  const row = asRecord(data);
-  const summary = asRecord(row.summary);
-  return {
-    summary: {
-      total: numberValue(summary.total), complete: numberValue(summary.complete), dueSoon: numberValue(summary.due_soon),
-      due: numberValue(summary.due), never: numberValue(summary.never), planned: numberValue(summary.planned), inProgress: numberValue(summary.in_progress),
-    },
-    locations: asArray(row.locations).map(mapLocationStatus), sessions: asArray(row.sessions).map(mapSession),
-  };
-}
-
-export async function createInventoryCountSession(input: { scopeType: "ALL" | "ZONE" | "LOCATIONS" | "DUE"; zone?: string; locationIds?: string[]; note?: string; }): Promise<{ id: string; countNo: string; targetCount: number }> {
-  ensureLiveMode();
-  const { data, error } = await client().rpc("create_inventory_count_session", {
-    p_scope_type: input.scopeType, p_zone: input.zone?.trim() || null,
-    p_location_ids: input.locationIds?.length ? input.locationIds : null, p_note: input.note?.trim() || null,
-  });
-  if (error) throw new Error(error.message);
-  const row = asRecord(data);
-  return { id: text(row.id), countNo: text(row.count_no), targetCount: numberValue(row.target_count) };
-}
-
-export async function getInventoryCountSession(sessionId: string): Promise<InventoryCountSessionDetail> {
-  ensureLiveMode();
-  const { data, error } = await client().rpc("get_inventory_count_session", { p_session_id: sessionId });
-  if (error) throw new Error(error.message);
-  return mapSessionDetail(data);
-}
-
-export async function startInventoryCountLocation(sessionId: string, locationId: string): Promise<InventoryCountLocationDetail> {
-  ensureLiveMode();
-  const { data, error } = await client().rpc("start_inventory_count_location", { p_session_id: sessionId, p_location_id: locationId });
-  if (error) throw new Error(error.message);
-  return mapLocationDetail(data);
-}
-
-export async function getInventoryCountLocation(sessionId: string, locationId: string): Promise<InventoryCountLocationDetail> {
-  ensureLiveMode();
-  const { data, error } = await client().rpc("get_inventory_count_location", { p_session_id: sessionId, p_location_id: locationId });
-  if (error) throw new Error(error.message);
-  return mapLocationDetail(data);
-}
-
-export async function addInventoryCountProduct(sessionId: string, locationId: string, productId: string): Promise<InventoryCountLocationDetail> {
-  ensureLiveMode();
-  const { data, error } = await client().rpc("add_inventory_count_product", { p_session_id: sessionId, p_location_id: locationId, p_product_id: productId });
-  if (error) throw new Error(error.message);
-  return mapLocationDetail(data);
-}
-
-export async function saveInventoryCountItems(sessionId: string, locationId: string, items: Array<{ productId: string; countedQty: number; note?: string }>): Promise<InventoryCountLocationDetail> {
-  ensureLiveMode();
-  const { data, error } = await client().rpc("save_inventory_count_items", {
-    p_session_id: sessionId, p_location_id: locationId,
-    p_items: items.map((item) => ({ product_id: item.productId, counted_qty: Math.max(0, Math.trunc(item.countedQty)), note: item.note?.trim() || null })),
-  });
-  if (error) throw new Error(error.message);
-  return mapLocationDetail(data);
-}
-
-export async function markInventoryCountItemsEqual(sessionId: string, locationId: string): Promise<InventoryCountLocationDetail> {
-  ensureLiveMode();
-  const { data, error } = await client().rpc("mark_inventory_count_items_equal", { p_session_id: sessionId, p_location_id: locationId });
-  if (error) throw new Error(error.message);
-  return mapLocationDetail(data);
-}
-
-export async function completeInventoryCountLocation(sessionId: string, locationId: string): Promise<InventoryCountLocationDetail> {
-  ensureLiveMode();
-  const { data, error } = await client().rpc("complete_inventory_count_location", { p_session_id: sessionId, p_location_id: locationId });
-  if (error) throw new Error(error.message);
-  return mapLocationDetail(data);
-}
-
-export async function cancelInventoryCountLocation(sessionId: string, locationId: string, reason?: string): Promise<InventoryCountSessionDetail> {
-  ensureLiveMode();
-  const { data, error } = await client().rpc("cancel_inventory_count_location", { p_session_id: sessionId, p_location_id: locationId, p_reason: reason?.trim() || null });
-  if (error) throw new Error(error.message);
-  return mapSessionDetail(data);
-}
-
-export async function cancelInventoryCountSession(sessionId: string, reason?: string): Promise<InventoryCountSessionDetail> {
-  ensureLiveMode();
-  const { data, error } = await client().rpc("cancel_inventory_count_session", { p_session_id: sessionId, p_reason: reason?.trim() || null });
-  if (error) throw new Error(error.message);
-  return mapSessionDetail(data);
-}
+export async function getInventoryCountDashboard(): Promise<InventoryCountDashboard> { ensureLiveMode(); const { data, error } = await client().rpc("get_inventory_count_dashboard"); if (error) throw new Error(error.message); const row = asRecord(data); const summary = asRecord(row.summary); return { summary: { total: numberValue(summary.total), complete: numberValue(summary.complete), dueSoon: numberValue(summary.due_soon), due: numberValue(summary.due), never: numberValue(summary.never), planned: numberValue(summary.planned), inProgress: numberValue(summary.in_progress) }, locations: asArray(row.locations).map(mapLocationStatus), sessions: asArray(row.sessions).map(mapSession) }; }
+export async function createInventoryCountSession(input: { scopeType: "ALL" | "ZONE" | "LOCATIONS" | "DUE"; zone?: string; locationIds?: string[]; note?: string; }): Promise<{ id: string; countNo: string; targetCount: number }> { ensureLiveMode(); const { data, error } = await client().rpc("create_inventory_count_session", { p_scope_type: input.scopeType, p_zone: input.zone?.trim() || null, p_location_ids: input.locationIds?.length ? input.locationIds : null, p_note: input.note?.trim() || null }); if (error) throw new Error(error.message); const row = asRecord(data); return { id: text(row.id), countNo: text(row.count_no), targetCount: numberValue(row.target_count) }; }
+export async function getInventoryCountSession(sessionId: string): Promise<InventoryCountSessionDetail> { ensureLiveMode(); const { data, error } = await client().rpc("get_inventory_count_session", { p_session_id: sessionId }); if (error) throw new Error(error.message); return mapSessionDetail(data); }
+export async function startInventoryCountLocation(sessionId: string, locationId: string): Promise<InventoryCountLocationDetail> { ensureLiveMode(); const { data, error } = await client().rpc("start_inventory_count_location", { p_session_id: sessionId, p_location_id: locationId }); if (error) throw new Error(error.message); return mapLocationDetail(data); }
+export async function getInventoryCountLocation(sessionId: string, locationId: string): Promise<InventoryCountLocationDetail> { ensureLiveMode(); const { data, error } = await client().rpc("get_inventory_count_location", { p_session_id: sessionId, p_location_id: locationId }); if (error) throw new Error(error.message); return mapLocationDetail(data); }
+export async function addInventoryCountProduct(sessionId: string, locationId: string, productId: string): Promise<InventoryCountLocationDetail> { ensureLiveMode(); const { data, error } = await client().rpc("add_inventory_count_product", { p_session_id: sessionId, p_location_id: locationId, p_product_id: productId }); if (error) throw new Error(error.message); return mapLocationDetail(data); }
+export async function saveInventoryCountItems(sessionId: string, locationId: string, items: Array<{ productId: string; countedQty: number; note?: string }>): Promise<InventoryCountLocationDetail> { ensureLiveMode(); const { data, error } = await client().rpc("save_inventory_count_items", { p_session_id: sessionId, p_location_id: locationId, p_items: items.map((item) => ({ product_id: item.productId, counted_qty: Math.max(0, Math.trunc(item.countedQty)), note: item.note?.trim() || null })) }); if (error) throw new Error(error.message); return mapLocationDetail(data); }
+export async function markInventoryCountItemsEqual(sessionId: string, locationId: string): Promise<InventoryCountLocationDetail> { ensureLiveMode(); const { data, error } = await client().rpc("mark_inventory_count_items_equal", { p_session_id: sessionId, p_location_id: locationId }); if (error) throw new Error(error.message); return mapLocationDetail(data); }
+export async function completeInventoryCountLocation(sessionId: string, locationId: string): Promise<InventoryCountLocationDetail> { ensureLiveMode(); const { data, error } = await client().rpc("complete_inventory_count_location", { p_session_id: sessionId, p_location_id: locationId }); if (error) throw new Error(error.message); return mapLocationDetail(data); }
+export async function cancelInventoryCountLocation(sessionId: string, locationId: string, reason?: string): Promise<InventoryCountSessionDetail> { ensureLiveMode(); const { data, error } = await client().rpc("cancel_inventory_count_location", { p_session_id: sessionId, p_location_id: locationId, p_reason: reason?.trim() || null }); if (error) throw new Error(error.message); return mapSessionDetail(data); }
+export async function cancelInventoryCountSession(sessionId: string, reason?: string): Promise<InventoryCountSessionDetail> { ensureLiveMode(); const { data, error } = await client().rpc("cancel_inventory_count_session", { p_session_id: sessionId, p_reason: reason?.trim() || null }); if (error) throw new Error(error.message); return mapSessionDetail(data); }
