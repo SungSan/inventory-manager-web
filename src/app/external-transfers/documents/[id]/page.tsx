@@ -193,12 +193,12 @@ function ExternalShipmentDocumentContent() {
           <div className={styles.infoLabel}>출고 목적</div>
           <div>{document.purpose || "-"}</div>
 
-          <div className={styles.infoLabel}>외부업체</div>
+          <div className={styles.infoLabel}>도착지</div>
           <div>{document.vendorName}</div>
           <div className={styles.infoLabel}>인수인·연락처</div>
           <div>{[document.vendorContact, document.vendorPhone].filter(Boolean).join(" · ") || "-"}</div>
 
-          <div className={styles.infoLabel}>출고 주소</div>
+          <div className={styles.infoLabel}>도착지 주소</div>
           <div className={styles.infoWide}>{document.vendorAddress || "-"}</div>
         </section>
 
