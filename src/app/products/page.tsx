@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { CameraSearchField } from "@/components/camera-search-field";
 import { Feedback, type FeedbackKind } from "@/components/feedback";
 import { PermissionGuard } from "@/components/permission-guard";
 import { useUser } from "@/components/user-provider";
@@ -108,7 +109,15 @@ function ProductsContent() {
       {feedback ? <Feedback kind={feedback.kind} title={feedback.title}>{feedback.body}</Feedback> : null}
 
       <section className="panel">
-        <div className="section-heading"><h3>등록 상품</h3><label className="compact-search">검색<input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="코드, 아티스트, 상품명" /></label></div>
+        <div className="section-heading">
+          <h3>등록 상품</h3>
+          <CameraSearchField
+            label="검색"
+            value={search}
+            onChange={setSearch}
+            placeholder="바코드, 코드, 아티스트, 상품명"
+          />
+        </div>
         <div className="table-wrap"><table><thead><tr><th>상태</th><th>아티스트</th><th>상품명/버전</th><th>P_CODE</th><th>CODE_NO</th><th>MASTER</th><th>관리</th></tr></thead><tbody>
           {rows.map((product) => (
             <tr key={product.id}>
