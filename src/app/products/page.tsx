@@ -3,16 +3,21 @@
 import { useCallback, useEffect, useState } from "react";
 import { Feedback, type FeedbackKind } from "@/components/feedback";
 import { PermissionGuard } from "@/components/permission-guard";
+import { useUser } from "@/components/user-provider";
 import { createProduct, listProducts, subscribeToInventory, updateProduct } from "@/lib/inventory-api";
+import { deleteUnusedProduct } from "@/lib/product-delete-api";
 import type { Product, ProductInput } from "@/types/domain";
 
 const emptyForm: ProductInput = { pCodeNo: "", codeNo: "", masterCodeNo: "", artist: "", nameVer: "", primaryBarcode: "", barcodeSource: "manufacturer" };
 
 function ProductsContent() {
+  const { user } = useUser();
+  const canDelete = user?.role === "admin";
   const [rows, setRows] = useState<Product[]>([]);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState<ProductInput>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<{ kind: FeedbackKind; title: string; body?: string } | null>(null);
 
@@ -55,6 +60,34 @@ function ProductsContent() {
     }
   }
 
+  async function removeProduct(product: Product) {
+    const label = `${product.artist || "아티스트 미등록"} · ${product.nameVer || product.codeNo}`;
+    const confirmed = window.confirm(
+      `${label}\n\n이 상품을 완전히 삭제할까요?\n현재 재고·입출고 이력·재고이관 기록이 있으면 삭제되지 않습니다.`,
+    );
+    if (!confirmed) return;
+
+    setDeletingId(product.id);
+    setFeedback(null);
+    try {
+      await deleteUnusedProduct(product.id);
+      if (editingId === product.id) {
+        setEditingId(null);
+        setForm(emptyForm);
+      }
+      setFeedback({ kind: "success", title: "상품 삭제 완료", body: label });
+      await load();
+    } catch (cause) {
+      setFeedback({
+        kind: "error",
+        title: "상품 삭제 실패",
+        body: cause instanceof Error ? cause.message : "상품을 삭제하지 못했습니다.",
+      });
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <div className="page-stack">
       <section><p className="eyebrow">PRODUCT MASTER</p><h2>상품 관리</h2><p className="muted">신규 상품은 대표 상품 바코드와 동시에 등록됩니다. 동일한 CODE_NO·상품 바코드를 여러 세부 버전에 사용할 수 있으며, 상품명/버전으로 구분됩니다.</p></section>
@@ -77,7 +110,31 @@ function ProductsContent() {
       <section className="panel">
         <div className="section-heading"><h3>등록 상품</h3><label className="compact-search">검색<input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="코드, 아티스트, 상품명" /></label></div>
         <div className="table-wrap"><table><thead><tr><th>상태</th><th>아티스트</th><th>상품명/버전</th><th>P_CODE</th><th>CODE_NO</th><th>MASTER</th><th>관리</th></tr></thead><tbody>
-          {rows.map((product) => <tr key={product.id}><td><span className={`status-badge ${product.active ? "active" : "inactive"}`}>{product.active ? "사용" : "중지"}</span></td><td>{product.artist}</td><td>{product.nameVer}</td><td>{product.pCodeNo}</td><td>{product.codeNo}</td><td>{product.masterCodeNo}</td><td><div className="row-actions"><button className="button button-secondary button-compact" onClick={() => startEdit(product)}>수정</button><button className="button button-ghost button-compact" onClick={() => void updateProduct(product.id, { active: !product.active }).then(load)}>{product.active ? "비활성화" : "활성화"}</button></div></td></tr>)}
+          {rows.map((product) => (
+            <tr key={product.id}>
+              <td><span className={`status-badge ${product.active ? "active" : "inactive"}`}>{product.active ? "사용" : "중지"}</span></td>
+              <td>{product.artist}</td>
+              <td>{product.nameVer}</td>
+              <td>{product.pCodeNo}</td>
+              <td>{product.codeNo}</td>
+              <td>{product.masterCodeNo}</td>
+              <td>
+                <div className="row-actions">
+                  <button className="button button-secondary button-compact" onClick={() => startEdit(product)}>수정</button>
+                  <button className="button button-ghost button-compact" onClick={() => void updateProduct(product.id, { active: !product.active }).then(load)}>{product.active ? "비활성화" : "활성화"}</button>
+                  {canDelete ? (
+                    <button
+                      className="button button-danger button-compact"
+                      disabled={deletingId === product.id}
+                      onClick={() => void removeProduct(product)}
+                    >
+                      {deletingId === product.id ? "삭제 중..." : "삭제"}
+                    </button>
+                  ) : null}
+                </div>
+              </td>
+            </tr>
+          ))}
         </tbody></table></div>
         {rows.length === 0 ? <p className="empty-state">등록된 상품이 없습니다.</p> : null}
       </section>
