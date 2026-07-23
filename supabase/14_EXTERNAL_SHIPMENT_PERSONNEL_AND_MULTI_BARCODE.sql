@@ -28,7 +28,10 @@ begin
   if not public.external_can_access_job(p_job_id) then
     raise exception '이 작업을 수정할 권한이 없습니다.';
   end if;
-  if p_items is null or jsonb_typeof(p_items)<>'array' or jsonb_array_length(p_items)=0 then
+  if p_items is null or jsonb_typeof(p_items)<>'array' then
+    raise exception '등록할 상품 형식이 올바르지 않습니다.';
+  end if;
+  if jsonb_array_length(p_items)=0 then
     raise exception '등록할 상품을 하나 이상 선택하세요.';
   end if;
 
