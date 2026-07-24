@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getSupabaseClient, isDemoMode } from "@/lib/supabase";
 import { UserProvider } from "@/components/user-provider";
+import { IdentityConsentGate } from "@/components/identity-consent-gate";
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -59,5 +60,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     );
   }
 
-  return <UserProvider>{children}</UserProvider>;
+  return (
+    <IdentityConsentGate>
+      <UserProvider>{children}</UserProvider>
+    </IdentityConsentGate>
+  );
 }
