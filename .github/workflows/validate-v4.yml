@@ -68,15 +68,33 @@ jobs:
           $$;
           create publication supabase_realtime;
           SQL
-      - name: Apply all SAN WMS migrations
+      - name: Apply reproducible base migrations
         shell: bash
         run: |
           set -o pipefail
           : > migration.log
-          while IFS= read -r file; do
+          for file in \
+            supabase/01_RESET_AND_INSTALL.sql \
+            supabase/02_TRANSFER_JOBS.sql \
+            supabase/03_ZONE_UTILIZATION.sql \
+            supabase/04_LOCATION_MAP.sql \
+            supabase/05_CLEAR_CURRENT_INVENTORY.sql \
+            supabase/07_CLEAR_OPERATIONAL_DATA_AND_PRODUCTS.sql \
+            supabase/08_LOCATION_OPERATIONAL_STATES.sql \
+            supabase/09_LOCATION_MAP_ZONE_VISIBILITY.sql \
+            supabase/10_LOCATION_COMPACT_BARCODES.sql \
+            supabase/11_PRODUCT_DELETE.sql \
+            supabase/12_EXTERNAL_TRANSFERS.sql \
+            supabase/12_PRODUCT_DELETE_MANAGER_PERMISSION.sql \
+            supabase/13_SCAN_LOCATION_FIRST_AND_STOCK_COUNT.sql \
+            supabase/14_EXTERNAL_SHIPMENT_PERSONNEL_AND_MULTI_BARCODE.sql \
+            supabase/20_IDENTITY_PIN_TERMS_CONSENT.sql \
+            supabase/21_WORK_REQUESTS_KPI_CALENDAR.sql \
+            supabase/22_PHASED_V4_ACTIVATION.sql
+          do
             echo "===== APPLY $file =====" | tee -a migration.log
             psql -v ON_ERROR_STOP=1 -f "$file" 2>&1 | tee -a migration.log
-          done < <(find supabase -maxdepth 1 -type f -name '*.sql' | sort -V)
+          done
       - name: Upload migration diagnostics
         if: always()
         uses: actions/upload-artifact@v4
