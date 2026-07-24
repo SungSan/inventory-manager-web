@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { AuthGate } from "@/components/auth-gate";
 import { StocktakeLiveEnhancer } from "@/components/stocktake-live-enhancer";
+import { WorkRequestIndicator } from "@/components/work-request-indicator";
 import { useUser } from "@/components/user-provider";
 import { hasPermission, roleLabels, type Permission } from "@/lib/permissions";
 import { isDemoMode, getSupabaseClient } from "@/lib/supabase";
@@ -13,6 +14,7 @@ import type { UserProfile } from "@/types/domain";
 
 const nav: Array<{ href: string; label: string; permission: Permission }> = [
   { href: "/", label: "대시보드", permission: "view_dashboard" },
+  { href: "/work-requests", label: "업무요청", permission: "work_requests" },
   { href: "/scan", label: "입고·출고", permission: "scan_inventory" },
   { href: "/stocktakes", label: "재고실사", permission: "stocktake_inventory" },
   { href: "/inventory", label: "재고조회", permission: "view_inventory" },
@@ -26,6 +28,7 @@ const nav: Array<{ href: string; label: string; permission: Permission }> = [
   { href: "/logs", label: "로그", permission: "view_logs" },
   { href: "/import", label: "데이터이전", permission: "import_data" },
   { href: "/users", label: "사용자", permission: "manage_users" },
+  { href: "/my-consent", label: "내 동의내역", permission: "view_dashboard" },
 ];
 
 function ShellContent({ children }: { children: React.ReactNode }) {
@@ -46,8 +49,9 @@ function ShellContent({ children }: { children: React.ReactNode }) {
     <div className="app-layout">
       <StocktakeLiveEnhancer />
       <header className="topbar">
-        <div><p className="eyebrow">SAN WMS · V3.9.0</p><h1>재고관리</h1></div>
+        <div><p className="eyebrow">SAN WMS · V4.0.0</p><h1>재고관리</h1></div>
         <div className="topbar-meta">
+          <WorkRequestIndicator />
           <span className={`mode-badge ${isDemoMode() ? "demo" : "live"}`}>{isDemoMode() ? "DEMO" : "LIVE"}</span>
           {user ? <span className="user-chip">{user.displayName} · {roleLabels[user.role]}</span> : null}
           {isDemoMode() && user ? <select className="user-switch" value={user.id} onChange={(event) => void switchDemoUser(event.target.value)} aria-label="데모 사용자 변경">{users.map((item) => <option key={item.id} value={item.id}>{item.displayName} ({roleLabels[item.role]})</option>)}</select> : null}
