@@ -49,7 +49,7 @@ function ShellContent({ children }: { children: React.ReactNode }) {
     <div className="app-layout">
       <StocktakeLiveEnhancer />
       <header className="topbar">
-        <div><p className="eyebrow">SAN WMS · V4.0.0</p><h1>재고관리</h1></div>
+        <div><p className="eyebrow">SAN WMS · V4.1.0</p><h1>재고관리</h1></div>
         <div className="topbar-meta">
           <WorkRequestIndicator />
           <span className={`mode-badge ${isDemoMode() ? "demo" : "live"}`}>{isDemoMode() ? "DEMO" : "LIVE"}</span>

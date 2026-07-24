@@ -13,6 +13,11 @@ export interface UserAccessStatus {
   loginId: string;
   assignedName: string;
   legalName?: string;
+  active: boolean;
+  disabledAt?: string;
+  disableReason?: string;
+  deletedAt?: string;
+  deletionReason?: string;
   accountType: string;
   isServiceAccount: boolean;
   pinConfigured: boolean;
@@ -70,6 +75,10 @@ export interface AdminUserSecurityStatus {
   latestTermsVersion?: string;
   latestTermsAcceptedAt?: string;
   termsAcceptanceRequired: boolean;
+  disabledAt?: string;
+  disableReason?: string;
+  deletedAt?: string;
+  deletionReason?: string;
 }
 
 function client() {
@@ -110,6 +119,7 @@ export async function getUserAccessStatus(): Promise<UserAccessStatus> {
       userId: "demo",
       loginId: "demo@san-wms.local",
       assignedName: "데모 사용자",
+      active: true,
       accountType: "HUMAN",
       isServiceAccount: false,
       pinConfigured: true,
@@ -129,6 +139,11 @@ export async function getUserAccessStatus(): Promise<UserAccessStatus> {
     loginId: text(row.login_id),
     assignedName: text(row.assigned_name),
     legalName: optionalText(row.legal_name),
+    active: row.active == null ? true : Boolean(row.active),
+    disabledAt: optionalText(row.disabled_at),
+    disableReason: optionalText(row.disable_reason),
+    deletedAt: optionalText(row.deleted_at),
+    deletionReason: optionalText(row.deletion_reason),
     accountType: text(row.account_type || "HUMAN"),
     isServiceAccount: Boolean(row.is_service_account),
     pinConfigured: Boolean(row.pin_configured),
@@ -219,6 +234,10 @@ export async function listAdminUserSecurityStatus(): Promise<AdminUserSecuritySt
       latestTermsVersion: optionalText(row.latest_terms_version),
       latestTermsAcceptedAt: optionalText(row.latest_terms_accepted_at),
       termsAcceptanceRequired: Boolean(row.terms_acceptance_required),
+      disabledAt: optionalText(row.disabled_at),
+      disableReason: optionalText(row.disable_reason),
+      deletedAt: optionalText(row.deleted_at),
+      deletionReason: optionalText(row.deletion_reason),
     };
   });
 }
@@ -248,4 +267,16 @@ export async function adminRequireAllReconsent(): Promise<number> {
 
 export function adminSetAccountType(userId: string, accountType: AdminUserSecurityStatus["accountType"], isServiceAccount: boolean): Promise<void> {
   return adminRpc("admin_set_account_type", { p_user_id: userId, p_account_type: accountType, p_is_service_account: isServiceAccount });
+}
+
+export function adminSetUserActive(userId: string, active: boolean, reason = ""): Promise<void> {
+  return adminRpc("admin_set_user_active", { p_user_id: userId, p_active: active, p_reason: reason });
+}
+
+export function adminDeleteUserAccount(userId: string, reason: string): Promise<void> {
+  return adminRpc("admin_delete_user_account", { p_user_id: userId, p_reason: reason });
+}
+
+export function adminRestoreDeletedUser(userId: string, reason = ""): Promise<void> {
+  return adminRpc("admin_restore_deleted_user", { p_user_id: userId, p_reason: reason });
 }

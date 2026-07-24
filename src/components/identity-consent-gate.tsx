@@ -37,6 +37,26 @@ export function IdentityConsentGate({ children }: { children: React.ReactNode })
   useEffect(() => { void load(); }, [load]);
 
   if (loading) return <div className={styles.loading}>본인확인 상태를 확인하는 중입니다.</div>;
+
+  if (status && (!status.active || status.deletedAt)) {
+    const deleted = Boolean(status.deletedAt);
+    const reason = deleted ? status.deletionReason : status.disableReason;
+    return (
+      <main className={styles.page}>
+        <section className={styles.card}>
+          <div className={styles.receipt}>
+            <p className="eyebrow">ACCOUNT ACCESS BLOCKED</p>
+            <h1>{deleted ? "삭제 처리된 계정입니다." : "사용금지 처리된 계정입니다."}</h1>
+            <p className="muted">현재 계정: {status.loginId}</p>
+            <p>SAN WMS 업무 기능에 접근할 수 없습니다. 계정 상태에 관한 문의는 관리자에게 확인하세요.</p>
+            {reason ? <p className={styles.error}>처리 사유: {reason}</p> : null}
+            <button className="button button-primary" onClick={() => void getSupabaseClient()?.auth.signOut()}>로그아웃</button>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   if (status?.accessReady && !receipt) return children;
 
   const needNewPin = Boolean(status && (!status.pinConfigured || status.pinResetRequired));
