@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AuthGate } from "@/components/auth-gate";
 import { StocktakeLiveEnhancer } from "@/components/stocktake-live-enhancer";
 import { WorkRequestIndicator } from "@/components/work-request-indicator";
+import { WorkRequestRuleEnhancer } from "@/components/work-request-rule-enhancer";
 import { useUser } from "@/components/user-provider";
 import { hasPermission, roleLabels, type Permission } from "@/lib/permissions";
 import { isDemoMode, getSupabaseClient } from "@/lib/supabase";
@@ -48,8 +49,9 @@ function ShellContent({ children }: { children: React.ReactNode }) {
   return (
     <div className="app-layout">
       <StocktakeLiveEnhancer />
+      <WorkRequestRuleEnhancer />
       <header className="topbar">
-        <div><p className="eyebrow">SAN WMS · V4.1.0</p><h1>재고관리</h1></div>
+        <div><p className="eyebrow">SAN WMS · V4.2.0</p><h1>재고관리</h1></div>
         <div className="topbar-meta">
           <WorkRequestIndicator />
           <span className={`mode-badge ${isDemoMode() ? "demo" : "live"}`}>{isDemoMode() ? "DEMO" : "LIVE"}</span>
