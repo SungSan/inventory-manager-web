@@ -12,6 +12,7 @@ import {
   listWorkRequestAssignees,
   listWorkRequestDocuments,
   listWorkRequests,
+  type BusinessCalendarEntry,
   type WorkRequest,
   type WorkRequestAssignee,
   type WorkRequestDocumentSummary,
@@ -23,7 +24,12 @@ import styles from "./work-requests.module.css";
 type Tab = "new" | "own" | "work" | "all" | "documents";
 const statusLabel: Record<WorkRequest["status"], string> = { SCHEDULED:"작업 전",IN_PROGRESS:"작업 중",PARTIAL:"작업 중",COMPLETED:"작업 완료",REJECTED:"반려",REQUESTER_CANCELLED:"요청자 삭제",VOIDED:"관리자 무효" };
 
-function dateText(date: Date): string { return date.toISOString().slice(0,10); }
+function dateText(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 function addDays(date: Date,days:number):Date{const next=new Date(date);next.setDate(next.getDate()+days);return next;}
 
 function WorkRequestsContent() {
@@ -60,8 +66,8 @@ function WorkRequestsContent() {
     const prepare=async()=>{
       const today=new Date();
       const end=addDays(today,45);
-      const overrides=await listBusinessCalendar(dateText(today),dateText(end)).catch(()=>[]);
-      const overrideMap=new Map(overrides.map((item)=>[item.businessDate,item.isWorkingDay]));
+      const overrides: BusinessCalendarEntry[] = await listBusinessCalendar(dateText(today),dateText(end)).catch(()=>[]);
+      const overrideMap = new Map<string, boolean>(overrides.map((item) => [item.businessDate, item.isWorkingDay] as const));
       let cursor=new Date(today.getFullYear(),today.getMonth(),today.getDate());
       let steps=today.getHours()>=15?2:1;
       while(steps>0){cursor=addDays(cursor,1);const key=dateText(cursor);const weekday=cursor.getDay();const working=overrideMap.has(key)?Boolean(overrideMap.get(key)):weekday!==0&&weekday!==6;if(working)steps-=1;}
