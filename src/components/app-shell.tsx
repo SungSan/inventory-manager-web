@@ -51,7 +51,7 @@ function ShellContent({ children }: { children: React.ReactNode }) {
       <StocktakeLiveEnhancer />
       <WorkRequestRuleEnhancer />
       <header className="topbar">
-        <div><p className="eyebrow">SAN WMS · V4.2.1</p><h1>재고관리</h1></div>
+        <div><p className="eyebrow">SAN WMS · V4.2.2</p><h1>재고관리</h1></div>
         <div className="topbar-meta">
           <WorkRequestIndicator />
           <span className={`mode-badge ${isDemoMode() ? "demo" : "live"}`}>{isDemoMode() ? "DEMO" : "LIVE"}</span>
