@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CameraSearchField } from "@/components/camera-search-field";
 import { PermissionGuard } from "@/components/permission-guard";
 import { downloadCsv } from "@/lib/csv";
-import { listBarcodes, listInventory, subscribeToInventory } from "@/lib/inventory-api";
+import { listBarcodes, subscribeToInventory } from "@/lib/inventory-api";
+import { listAllInventoryRows } from "@/lib/full-data-api";
 import type { BarcodeRecord, InventoryRow } from "@/types/domain";
 
 interface LocationInventorySummary {
@@ -99,7 +100,7 @@ function InventoryContent() {
   const load = useCallback(async () => {
     try {
       const [inventoryRows, barcodeRows] = await Promise.all([
-        listInventory(""),
+        listAllInventoryRows(),
         listBarcodes("", "product"),
       ]);
       setRows(inventoryRows);
