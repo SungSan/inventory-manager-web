@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { getSupabaseClient, isDemoMode } from "@/lib/supabase";
 
-const NOTICE = "15시 이전에 등록하면 당일 출고를 요청할 수 있고, 15시 이후에는 다음 영업일부터 요청할 수 있습니다. 토·일요일, 공휴일 및 관리자 지정 휴무일은 출고 요청일로 선택할 수 없습니다. 작업자는 요청 출고일과 관계없이 배정된 업무를 즉시 시작할 수 있습니다.";
+const NOTICE = "12시 이전에 등록하면 당일이 영업일인 경우 당일 출고를 요청할 수 있습니다. 12시부터 17시까지는 다음 영업일부터, 17시를 초과하면 두 번째 영업일부터 요청할 수 있습니다. 토·일요일, 공휴일 및 관리자 지정 휴무일은 출고 요청일로 선택할 수 없습니다. 작업자는 요청 출고일과 관계없이 배정된 업무를 즉시 시작할 수 있습니다.";
 
 function setControlledInputValue(input: HTMLInputElement, value: string) {
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
@@ -22,7 +22,11 @@ function findRequestedDateInput(): HTMLInputElement | null {
 function replaceNotice() {
   document.querySelectorAll<HTMLParagraphElement>("p").forEach((paragraph) => {
     const text = paragraph.textContent?.replace(/\s+/g, " ").trim() ?? "";
-    if (text.startsWith("당일 출고는 불가능합니다.") || text.includes("두 번째 영업일부터 요청")) {
+    if (
+      text.startsWith("당일 출고는 불가능합니다.")
+      || text.includes("두 번째 영업일부터 요청")
+      || text.includes("15시 이전에 등록하면")
+    ) {
       paragraph.textContent = NOTICE;
     }
   });
