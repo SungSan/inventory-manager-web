@@ -69,7 +69,12 @@ as $$
 declare
   v_affected integer;
 begin
-  perform public.require_role(array['admin']);
+  if auth.uid() is null or not exists(
+    select 1 from public.profiles p
+    where p.id=auth.uid() and p.active and p.role='admin'
+  ) then
+    raise exception '활성 관리자만 본인확인 강제 적용을 활성화할 수 있습니다.';
+  end if;
 
   update public.system_feature_flags
   set enabled=true,
@@ -111,7 +116,12 @@ security definer
 set search_path=public
 as $$
 begin
-  perform public.require_role(array['admin']);
+  if auth.uid() is null or not exists(
+    select 1 from public.profiles p
+    where p.id=auth.uid() and p.active and p.role='admin'
+  ) then
+    raise exception '활성 관리자만 본인확인 강제 적용을 비활성화할 수 있습니다.';
+  end if;
 
   if nullif(btrim(p_reason),'') is null then
     raise exception '긴급 비활성화 사유를 입력하세요.';
