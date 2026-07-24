@@ -3,10 +3,17 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { BarcodeField } from "@/components/barcode-field";
 import { PermissionGuard } from "@/components/permission-guard";
+import { resolveBarcodeCandidates } from "@/lib/inventory-api";
 import { cancelInventoryCountSession, getInventoryCountSession, startInventoryCountLocation, type InventoryCountSessionDetail } from "@/lib/stocktake-api";
 import { getSupabaseClient } from "@/lib/supabase";
+import type { Location, ResolvedBarcode } from "@/types/domain";
 import styles from "../stocktakes.module.css";
+
+function locationFromResolved(item: ResolvedBarcode): Location | null {
+  return item.target.type === "location" && "location" in item.target ? item.target.location : null;
+}
 
 function SessionContent() {
   const params = useParams<{ id: string }>();
@@ -15,6 +22,9 @@ function SessionContent() {
   const [keyword, setKeyword] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [busyLocationId, setBusyLocationId] = useState("");
+  const [locationBarcode, setLocationBarcode] = useState("");
+  const [scanResetToken, setScanResetToken] = useState(0);
+  const [scanBusy, setScanBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -33,12 +43,50 @@ function SessionContent() {
     });
   }, [keyword, session, statusFilter]);
 
-  async function openLocation(locationId: string, status: string) {
+  async function openLocation(locationId: string, status: string): Promise<boolean> {
+    if (status === "CANCELLED") {
+      setError("취소된 LOC는 실사 화면에 접속할 수 없습니다.");
+      return false;
+    }
     setBusyLocationId(locationId); setError(""); setMessage("");
-    try { if (status === "PENDING") await startInventoryCountLocation(params.id, locationId); router.push(`/stocktakes/${params.id}/${locationId}`); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : "로케이션 실사를 시작하지 못했습니다."); }
-    finally { setBusyLocationId(""); }
+    try {
+      if (status === "PENDING") await startInventoryCountLocation(params.id, locationId);
+      router.push(`/stocktakes/${params.id}/${locationId}`);
+      return true;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "로케이션 실사를 시작하지 못했습니다.");
+      return false;
+    } finally {
+      setBusyLocationId("");
+    }
   }
+
+  const scanLocation = useCallback(async (value: string): Promise<boolean> => {
+    if (!session || scanBusy) return false;
+    setScanBusy(true); setError(""); setMessage(""); setLocationBarcode(value);
+    try {
+      const matches = await resolveBarcodeCandidates(value, "location", "STOCKTAKE_LOCATION_SCAN");
+      if (matches.length === 0) throw new Error("등록된 로케이션 바코드를 찾을 수 없습니다.");
+      if (matches.length > 1) throw new Error("같은 바코드가 여러 로케이션에 연결되어 있습니다. 바코드 설정을 확인하세요.");
+      const resolvedLocation = locationFromResolved(matches[0]);
+      if (!resolvedLocation) throw new Error("로케이션 바코드가 아닙니다.");
+
+      const target = session.locations.find((row) => row.locationId === resolvedLocation.id);
+      if (!target) throw new Error(`${resolvedLocation.locationCode}는 현재 실사 작업의 대상 LOC가 아닙니다.`);
+      if (target.status === "CANCELLED") throw new Error(`${target.locationCode}는 현재 실사에서 취소된 LOC입니다.`);
+
+      setKeyword(target.locationCode);
+      const opened = await openLocation(target.locationId, target.status);
+      if (!opened) return false;
+      setScanResetToken((current) => current + 1);
+      return true;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "LOC 바코드를 확인하지 못했습니다.");
+      return false;
+    } finally {
+      setScanBusy(false);
+    }
+  }, [params.id, scanBusy, session]);
 
   async function confirmEmptyLocation(locationId: string, locationCode: string) {
     if (!window.confirm(`${locationCode}가 실제로 비어 있습니까?\n\n확인 후 즉시 실사 완료 처리됩니다.`)) return;
@@ -76,6 +124,10 @@ function SessionContent() {
       {error ? <p className="inline-error">{error}</p> : null}
       {message ? <div className="feedback feedback-success"><strong>{message}</strong></div> : null}
       <section className={styles.progressPanel}><div><span>전체 LOC</span><strong>{total.toLocaleString()}</strong></div><div><span>완료</span><strong>{completed.toLocaleString()}</strong></div><div><span>진행률</span><strong>{percent}%</strong></div><div><span>차이 수량</span><strong>{session.locations.reduce((sum, row) => sum + row.differenceQty, 0).toLocaleString()}</strong></div></section>
+      <section className="panel">
+        <div className="section-heading"><div><p className="eyebrow">SCAN & OPEN</p><h3>LOC 바코드 촬영 후 즉시 실사</h3><p className="muted">로케이션 바코드를 촬영하거나 스캔하면 대상 LOC를 자동으로 찾아 실사 화면까지 바로 접속합니다.</p></div></div>
+        <BarcodeField label="LOC 바코드" placeholder="실사할 로케이션 바코드를 촬영 또는 스캔하세요" value={locationBarcode} onSubmit={scanLocation} disabled={scanBusy || Boolean(busyLocationId)} resetToken={scanResetToken} autoFocus />
+      </section>
       <section className="panel">
         <div className="section-heading"><div><p className="eyebrow">TARGET LOCATIONS</p><h3>실사 대상 로케이션</h3></div><strong>{visibleLocations.length.toLocaleString()}개</strong></div>
         <div className={styles.filters}><input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="LOC 또는 구역 검색" /><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="ALL">전체 상태</option><option value="PENDING">대기</option><option value="IN_PROGRESS">진행 중</option><option value="COMPLETED">완료</option><option value="CANCELLED">취소</option></select><button className="button button-secondary" onClick={() => void load()}>새로고침</button></div>
