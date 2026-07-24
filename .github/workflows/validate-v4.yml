@@ -15,6 +15,20 @@ jobs:
         with:
           node-version: 22
       - run: npm install
+      - name: Parse PostgreSQL migrations
+        run: |
+          python -m pip install --quiet pglast
+          python - <<'PY'
+          from pathlib import Path
+          from pglast import parse_sql
+          for name in [
+              "supabase/20_IDENTITY_PIN_TERMS_CONSENT.sql",
+              "supabase/21_WORK_REQUESTS_KPI_CALENDAR.sql",
+          ]:
+              sql = Path(name).read_text(encoding="utf-8")
+              parse_sql(sql)
+              print(f"Parsed: {name}")
+          PY
       - name: Typecheck
         id: typecheck
         shell: bash
