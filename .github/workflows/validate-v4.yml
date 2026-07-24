@@ -8,7 +8,26 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: san_wms_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d san_wms_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: san_wms_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -29,5 +48,40 @@ jobs:
               parse_sql(Path(name).read_text(encoding="utf-8"))
               print(f"Parsed: {name}")
           PY
+      - name: Bootstrap Supabase auth compatibility
+        run: |
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          do $$ begin
+            if not exists(select 1 from pg_roles where rolname='anon') then create role anon nologin; end if;
+            if not exists(select 1 from pg_roles where rolname='authenticated') then create role authenticated nologin; end if;
+            if not exists(select 1 from pg_roles where rolname='service_role') then create role service_role nologin bypassrls; end if;
+          end $$;
+          create schema if not exists auth;
+          create table if not exists auth.users (
+            id uuid primary key,
+            email text,
+            raw_user_meta_data jsonb not null default '{}'::jsonb,
+            created_at timestamptz not null default now()
+          );
+          create or replace function auth.uid() returns uuid language sql stable as $$
+            select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid
+          $$;
+          create publication supabase_realtime;
+          SQL
+      - name: Apply all SAN WMS migrations
+        shell: bash
+        run: |
+          set -o pipefail
+          : > migration.log
+          while IFS= read -r file; do
+            echo "===== APPLY $file =====" | tee -a migration.log
+            psql -v ON_ERROR_STOP=1 -f "$file" 2>&1 | tee -a migration.log
+          done < <(find supabase -maxdepth 1 -type f -name '*.sql' | sort -V)
+      - name: Upload migration diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-migration-diagnostics
+          path: migration.log
       - run: npm run typecheck
       - run: npm run build
