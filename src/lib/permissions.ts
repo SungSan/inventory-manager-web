@@ -8,6 +8,9 @@ export type Permission =
   | "stocktake_inventory"
   | "transfer_inventory"
   | "external_transfer"
+  | "work_requests"
+  | "manage_work_requests"
+  | "manage_worker_kpi"
   | "manage_products"
   | "manage_locations"
   | "manage_barcodes"
@@ -16,21 +19,21 @@ export type Permission =
   | "manage_users";
 
 const rolePermissions: Record<UserRole, Permission[]> = {
-  viewer: ["view_dashboard", "view_inventory", "view_logs"],
+  viewer: ["view_dashboard", "view_inventory", "view_logs", "work_requests"],
   operator: [
     "view_dashboard", "view_inventory", "view_logs", "scan_inventory",
-    "stocktake_inventory", "transfer_inventory", "external_transfer",
+    "stocktake_inventory", "transfer_inventory", "external_transfer", "work_requests",
     "manage_products", "manage_locations", "manage_barcodes",
   ],
   manager: [
     "view_dashboard", "view_inventory", "view_logs", "scan_inventory",
-    "stocktake_inventory", "transfer_inventory", "external_transfer",
+    "stocktake_inventory", "transfer_inventory", "external_transfer", "work_requests", "manage_work_requests",
     "manage_products", "manage_locations", "manage_barcodes",
     "reverse_transactions", "import_data",
   ],
   admin: [
     "view_dashboard", "view_inventory", "view_logs", "scan_inventory",
-    "stocktake_inventory", "transfer_inventory", "external_transfer",
+    "stocktake_inventory", "transfer_inventory", "external_transfer", "work_requests", "manage_work_requests", "manage_worker_kpi",
     "manage_products", "manage_locations", "manage_barcodes",
     "reverse_transactions", "import_data", "manage_users",
   ],
