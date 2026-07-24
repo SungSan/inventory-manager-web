@@ -1,0 +1,61 @@
+name: Apply V4.2.3 inventory fix
+
+on:
+  push:
+    branches: [fix/v4-2-3-full-inventory-query]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/v4-2-3-full-inventory-query
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Apply source changes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          inventory_page = Path('src/app/inventory/page.tsx')
+          text = inventory_page.read_text(encoding='utf-8')
+          old_import = 'import { listBarcodes, listInventory, subscribeToInventory } from "@/lib/inventory-api";'
+          new_import = 'import { listBarcodes, subscribeToInventory } from "@/lib/inventory-api";\nimport { listAllInventoryRows } from "@/lib/full-data-api";'
+          if old_import in text:
+              text = text.replace(old_import, new_import, 1)
+          text = text.replace('listInventory("")', 'listAllInventoryRows()', 1)
+          inventory_page.write_text(text, encoding='utf-8')
+
+          app_shell = Path('src/components/app-shell.tsx')
+          text = app_shell.read_text(encoding='utf-8').replace('SAN WMS · V4.2.2', 'SAN WMS · V4.2.3')
+          app_shell.write_text(text, encoding='utf-8')
+
+          package = Path('package.json')
+          text = package.read_text(encoding='utf-8').replace('"version": "4.2.2"', '"version": "4.2.3"')
+          package.write_text(text, encoding='utf-8')
+
+          sw = Path('public/sw.js')
+          text = sw.read_text(encoding='utf-8').replace('san-wms-v4-2-2-static', 'san-wms-v4-2-3-static')
+          sw.write_text(text, encoding='utf-8')
+          PY
+      - name: Validate
+        run: |
+          npm install --no-audit --no-fund
+          npm run typecheck
+          npm run build
+      - name: Commit changes
+        run: |
+          if git diff --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app/inventory/page.tsx src/components/app-shell.tsx package.json public/sw.js
+          git commit -m "Fix inventory lookup pagination for all locations"
+          git push origin HEAD:fix/v4-2-3-full-inventory-query
