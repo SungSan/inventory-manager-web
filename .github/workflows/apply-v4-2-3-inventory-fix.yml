@@ -3,6 +3,8 @@ name: Apply V4.2.3 inventory fix
 on:
   push:
     branches: [fix/v4-2-3-full-inventory-query]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
