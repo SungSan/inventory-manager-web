@@ -19,6 +19,24 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - name: Normalize source for deterministic patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          path = Path('src/components/scan-workflow-v4.tsx')
+          text = path.read_text(encoding='utf-8')
+          text, count = re.subn(
+              r'^\s*const insufficient = operation === "OB" && Boolean\(productLocation\) && item\.qty > stock;$',
+              '                    const insufficient = operation === "OB" && Boolean(productLocation) && item.qty > stock;',
+              text,
+              count=1,
+              flags=re.M,
+          )
+          if count != 1:
+              raise SystemExit(f'insufficient line normalization failed: {count}')
+          path.write_text(text, encoding='utf-8')
+          PY
       - name: Extract and run patch script
         run: |
           python - <<'PY'
