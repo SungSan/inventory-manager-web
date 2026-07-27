@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { AuthGate } from "@/components/auth-gate";
+import { NumericInputGuard } from "@/components/numeric-input-guard";
 import { StocktakeLiveEnhancer } from "@/components/stocktake-live-enhancer";
 import { WorkRequestIndicator } from "@/components/work-request-indicator";
 import { WorkRequestRuleEnhancer } from "@/components/work-request-rule-enhancer";
@@ -50,8 +51,9 @@ function ShellContent({ children }: { children: React.ReactNode }) {
     <div className="app-layout">
       <StocktakeLiveEnhancer />
       <WorkRequestRuleEnhancer />
+      <NumericInputGuard />
       <header className="topbar">
-        <div><p className="eyebrow">SAN WMS · V4.2.3</p><h1>재고관리</h1></div>
+        <div><p className="eyebrow">SAN WMS · V4.3.0</p><h1>재고관리</h1></div>
         <div className="topbar-meta">
           <WorkRequestIndicator />
           <span className={`mode-badge ${isDemoMode() ? "demo" : "live"}`}>{isDemoMode() ? "DEMO" : "LIVE"}</span>

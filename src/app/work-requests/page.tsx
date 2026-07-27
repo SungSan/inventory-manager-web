@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { PermissionGuard } from "@/components/permission-guard";
 import { useUser } from "@/components/user-provider";
 import { listProducts, subscribeToInventory } from "@/lib/inventory-api";
+import { isIntegerInputValue, numberOrZero, parseIntegerDraft, type NumberInputValue } from "@/lib/number-input";
 import type { Product } from "@/types/domain";
 import {
   createWorkRequest,
@@ -38,7 +39,7 @@ function WorkRequestsContent() {
   const [requests,setRequests]=useState<WorkRequest[]>([]);
   const [documents,setDocuments]=useState<WorkRequestDocumentSummary[]>([]);
   const [header,setHeader]=useState<WorkRequestHeaderInput>({requestedShipDate:"",vendorName:"",vendorContact:"",vendorPhone:"",vendorAddress:"",purpose:"",note:""});
-  const [selected,setSelected]=useState<Array<{product:Product;qty:number}>>([]);
+  const [selected,setSelected]=useState<Array<{product:Product;qty:NumberInputValue}>>([]);
   const [productKeyword,setProductKeyword]=useState("");
   const [productResults,setProductResults]=useState<Product[]>([]);
   const [assignees,setAssignees]=useState<WorkRequestAssignee[]>([]);
@@ -82,8 +83,8 @@ function WorkRequestsContent() {
     return()=>window.clearTimeout(timer);
   },[productKeyword]);
 
-  const itemInput=useMemo<WorkRequestProductInput[]>(()=>selected.map((item)=>({productId:item.product.id,qty:item.qty})),[selected]);
-  const totalQty=useMemo(()=>selected.reduce((sum,item)=>sum+item.qty,0),[selected]);
+  const itemInput=useMemo<WorkRequestProductInput[]>(()=>selected.map((item)=>({productId:item.product.id,qty:numberOrZero(item.qty)})),[selected]);
+  const totalQty=useMemo(()=>selected.reduce((sum,item)=>sum+numberOrZero(item.qty),0),[selected]);
 
   useEffect(()=>{
     if(!header.requestedShipDate){setAssignees([]);return;}
@@ -100,11 +101,12 @@ function WorkRequestsContent() {
   },[tab,search,dateFrom,dateTo]);
 
   function addProduct(product:Product){setSelected((current)=>current.some((item)=>item.product.id===product.id)?current:[...current,{product,qty:1}]);setProductKeyword("");setProductResults([]);}
-  function setQty(productId:string,qty:number){setSelected((current)=>current.map((item)=>item.product.id===productId?{...item,qty:Math.max(1,Math.trunc(qty||1))}:item));}
+  function setQty(productId:string,raw:string){setSelected((current)=>current.map((item)=>item.product.id===productId?{...item,qty:parseIntegerDraft(raw,1)}:item));}
 
   async function submit(){
     if(!header.vendorName.trim()){setError("외부업체명을 입력하세요.");return;}
     if(selected.length===0){setError("요청 상품을 1개 이상 추가하세요.");return;}
+    if(selected.some((item)=>!isIntegerInputValue(item.qty,1))){setError("모든 요청 상품의 수량을 입력하세요.");return;}
     if(candidateIds.length===0){setError("KPI 여유가 있는 담당 작업자를 1명 이상 선택하세요.");return;}
     setBusy(true);setError("");setMessage("");
     try{
@@ -143,7 +145,7 @@ function WorkRequestsContent() {
         <div className="section-heading"><div><p className="eyebrow">REQUEST ITEMS</p><h3>요청 상품</h3></div><strong>{selected.length} SKU · {totalQty.toLocaleString()}개</strong></div>
         <div className={styles.productSearch}><input value={productKeyword} onChange={(event)=>setProductKeyword(event.target.value)} placeholder="상품명, 아티스트, CODE_NO 검색"/><button className="button button-secondary" onClick={()=>setProductKeyword(productKeyword.trim())}>검색</button></div>
         {productResults.length>0?<div className={styles.searchResults}>{productResults.map((product)=><div key={product.id} className={styles.searchRow}><div><strong>{product.artist} · {product.nameVer}</strong><p>{product.pCodeNo||"-"} · {product.codeNo}</p></div><span></span><button className="button button-secondary button-compact" onClick={()=>addProduct(product)}>추가</button></div>)}</div>:null}
-        <div className={styles.products}>{selected.map((item)=><div key={item.product.id} className={styles.selectedRow}><div><strong>{item.product.artist} · {item.product.nameVer}</strong><p>{item.product.pCodeNo||"-"} · {item.product.codeNo}</p></div><input type="number" min={1} value={item.qty} onChange={(event)=>setQty(item.product.id,Number(event.target.value))}/><button className="button button-secondary button-compact" onClick={()=>setSelected((current)=>current.filter((row)=>row.product.id!==item.product.id))}>제거</button></div>)}</div>
+        <div className={styles.products}>{selected.map((item)=><div key={item.product.id} className={styles.selectedRow}><div><strong>{item.product.artist} · {item.product.nameVer}</strong><p>{item.product.pCodeNo||"-"} · {item.product.codeNo}</p></div><input type="number" min={1} value={item.qty} onChange={(event)=>setQty(item.product.id,event.target.value)}/><button className="button button-secondary button-compact" onClick={()=>setSelected((current)=>current.filter((row)=>row.product.id!==item.product.id))}>제거</button></div>)}</div>
       </section>
 
       <section className="panel page-stack">
