@@ -1,0 +1,11 @@
+
+added 320 packages in 19s
+
+> san-wms@4.3.0 typecheck
+> tsc --noEmit
+
+src/app/transfers/[id]/page.tsx(129,66): error TS2365: Operator '+' cannot be applied to types 'string | number' and 'number'.
+src/components/external-transfer-detail-v2.tsx(248,5): error TS2322: Type 'NumberInputValue' is not assignable to type 'number'.
+  Type 'string' is not assignable to type 'number'.
+src/components/external-transfer-detail-v2.tsx(249,29): error TS2365: Operator '+' cannot be applied to types 'string | number' and 'number'.
+src/components/scan-workflow-v4.tsx(380,73): error TS2365: Operator '+' cannot be applied to types 'string | number' and 'number'.
