@@ -1,5 +1,5 @@
 
-added 320 packages in 19s
+added 320 packages in 22s
 
 > san-wms@4.3.0 typecheck
 > tsc --noEmit
