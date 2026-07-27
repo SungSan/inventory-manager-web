@@ -1,0 +1,64 @@
+name: Apply final V4.3 external validation
+
+on:
+  push:
+    branches: [fix/v4-3-numeric-pin-terms]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/v4-3-numeric-pin-terms
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Add blank quantity validation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/components/external-transfer-detail-v2.tsx')
+          text = path.read_text(encoding='utf-8')
+          old = '''    if (items.length === 0) {
+      setError("출고할 상품을 하나 이상 스캔하세요.");
+      return;
+    }
+    setWorking(true);'''
+          new = '''    if (items.length === 0) {
+      setError("출고할 상품을 하나 이상 스캔하세요.");
+      return;
+    }
+    const invalidQtyItem = items.find((item) => !isIntegerInputValue(qtyDrafts[item.productId] ?? item.requestedQty, 1));
+    if (invalidQtyItem) {
+      setError(`${invalidQtyItem.artist} · ${invalidQtyItem.nameVer}의 출고 수량을 입력하세요.`);
+      return;
+    }
+    setWorking(true);'''
+          if old in text:
+              text = text.replace(old, new, 1)
+              path.write_text(text, encoding='utf-8')
+          elif 'const invalidQtyItem = items.find' not in text:
+              raise SystemExit('validation insertion point not found')
+          PY
+      - name: Validate
+        run: |
+          npm install --no-audit --no-fund
+          npm run typecheck
+          npm run build
+      - name: Commit branch update
+        run: |
+          rm -f .github/v4-3-finalize-trigger.txt .github/v4-3-finalize-trigger-2.txt
+          if git diff --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/external-transfer-detail-v2.tsx .github/v4-3-finalize-trigger.txt .github/v4-3-finalize-trigger-2.txt || true
+          git commit -m "Block external transfer progress when quantity is blank"
+          git push origin HEAD:fix/v4-3-numeric-pin-terms
