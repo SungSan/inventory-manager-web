@@ -57,6 +57,31 @@ jobs:
           Path('/tmp/apply_v4_3.py').write_text('\n'.join(output) + '\n', encoding='utf-8')
           PY
           python /tmp/apply_v4_3.py
+      - name: Apply TypeScript corrections
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          corrections = {
+            'src/app/transfers/[id]/page.tsx': [
+              ('Object.values(drafts).reduce((sum, qty) => sum + numberOrZero(qty), 0)', 'Object.values(drafts).reduce<number>((sum, qty) => sum + numberOrZero(qty), 0)'),
+            ],
+            'src/components/scan-workflow-v4.tsx': [
+              ('Object.values(selectedItems).reduce((sum, qty) => sum + numberOrZero(qty), 0)', 'Object.values(selectedItems).reduce<number>((sum, qty) => sum + numberOrZero(qty), 0)'),
+            ],
+            'src/components/external-transfer-detail-v2.tsx': [
+              ('Object.values(allocationDraft[item.productId] ?? {})\n      .reduce((sum, qty) => sum + numberOrZero(qty), 0)', 'Object.values(allocationDraft[item.productId] ?? {})\n      .reduce<number>((sum, qty) => sum + numberOrZero(qty), 0)'),
+            ],
+          }
+          for file_name, replacements in corrections.items():
+              path = Path(file_name)
+              text = path.read_text(encoding='utf-8')
+              for old, new in replacements:
+                  if old not in text:
+                      raise SystemExit(f'correction not found in {file_name}: {old}')
+                  text = text.replace(old, new, 1)
+              path.write_text(text, encoding='utf-8')
+          PY
       - name: Validate
         run: |
           npm install --no-audit --no-fund
