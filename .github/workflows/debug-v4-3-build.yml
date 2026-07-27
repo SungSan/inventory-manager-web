@@ -1,0 +1,52 @@
+name: Debug V4.3 build
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  debug:
+    if: github.head_ref == 'fix/v4-3-numeric-pin-terms'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/v4-3-numeric-pin-terms
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Apply patch in workspace
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          path = Path('src/components/scan-workflow-v4.tsx')
+          text = path.read_text(encoding='utf-8')
+          text = re.sub(r'^\s*const insufficient = operation === "OB" && Boolean\(productLocation\) && item\.qty > stock;$', '                    const insufficient = operation === "OB" && Boolean(productLocation) && item.qty > stock;', text, count=1, flags=re.M)
+          path.write_text(text, encoding='utf-8')
+          source = Path('.github/workflows/apply-v4-3-numeric-pin-terms.yml').read_text(encoding='utf-8').splitlines()
+          output=[]; inside=False
+          for line in source:
+              if "python - <<'PY'" in line: inside=True; continue
+              if inside and line.strip() == 'PY': break
+              if inside: output.append(line[10:] if line.startswith('          ') else line)
+          Path('/tmp/apply_v4_3.py').write_text('\n'.join(output)+'\n',encoding='utf-8')
+          PY
+          python /tmp/apply_v4_3.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Capture typecheck
+        continue-on-error: true
+        run: |
+          npm install --no-audit --no-fund > BUILD_OUTPUT.txt 2>&1
+          npm run typecheck >> BUILD_OUTPUT.txt 2>&1
+          echo "exit_code=$?" >> BUILD_OUTPUT.txt
+      - name: Commit build diagnostics
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add BUILD_OUTPUT.txt
+          git commit -m "Capture V4.3 typecheck diagnostics" || exit 0
+          git push origin HEAD:fix/v4-3-numeric-pin-terms
