@@ -1,0 +1,336 @@
+name: Apply V4.3 numeric PIN terms fixes
+
+on:
+  push:
+    branches: [fix/v4-3-numeric-pin-terms]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/v4-3-numeric-pin-terms
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Apply source changes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace(path, old, new, count=1):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              actual = text.count(old)
+              if actual < count:
+                  raise SystemExit(f'{path}: replacement not found: {old[:100]!r} (found {actual})')
+              text = text.replace(old, new, count)
+              p.write_text(text, encoding='utf-8')
+
+          def regex_replace(path, pattern, replacement, count=1):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              text, actual = re.subn(pattern, replacement, text, count=count, flags=re.S)
+              if actual != count:
+                  raise SystemExit(f'{path}: regex replacement count {actual}, expected {count}: {pattern[:100]!r}')
+              p.write_text(text, encoding='utf-8')
+
+          # PIN 안내 및 활성 약관 자동 적용 표시
+          path = 'src/components/identity-consent-gate.tsx'
+          replace(path,
+              '<input type="password" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={newPin} onChange={(event) => setNewPin(digitsOnly(event.target.value))} autoComplete="new-password" required disabled={submitting} />',
+              '<input type="password" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={newPin} onChange={(event) => setNewPin(digitsOnly(event.target.value))} autoComplete="new-password" required disabled={submitting} />\n                <span className="muted small">숫자 6자리를 입력하세요. 예: 123456</span>'
+          )
+          replace(path,
+              '<input type="password" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={pinConfirm} onChange={(event) => setPinConfirm(digitsOnly(event.target.value))} autoComplete="new-password" required disabled={submitting} />',
+              '<input type="password" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={pinConfirm} onChange={(event) => setPinConfirm(digitsOnly(event.target.value))} autoComplete="new-password" required disabled={submitting} />\n                <span className="muted small">위에서 설정한 숫자 6자리 PIN을 다시 입력하세요.</span>'
+          )
+          replace(path,
+              '<input type="password" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={finalPin} onChange={(event) => setFinalPin(digitsOnly(event.target.value))} autoComplete="current-password" required disabled={submitting} />\n            <p className={styles.pinHint}>PIN 원문은 저장되지 않으며 bcrypt 방식의 일방향 해시만 서버 비공개 영역에 저장됩니다.</p>',
+              '<input type="password" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={finalPin} onChange={(event) => setFinalPin(digitsOnly(event.target.value))} autoComplete="current-password" required disabled={submitting} />\n            <p className={styles.pinHint}>숫자 6자리를 입력하세요. PIN 원문은 저장되지 않으며 bcrypt 방식의 일방향 해시만 서버 비공개 영역에 저장됩니다.</p>'
+          )
+          replace(path,
+              '        <section className={styles.documentGrid}>',
+              '        <p className={styles.notice}>동의 시점에 서버에서 활성화된 최신 이용조건 버전 <strong>{status.terms.version}</strong>이 자동 적용됩니다. 사용자가 버전을 직접 입력할 필요가 없습니다.</p>\n\n        <section className={styles.documentGrid}>'
+          )
+          replace(path, '<span className={styles.status}>버전 {status.terms.version}</span>', '<span className={styles.status}>현재 적용 버전 {status.terms.version}</span>')
+
+          # 입출고 기본 워크플로: 숫자 입력 중 공란 허용, 확정 시 검증
+          path = 'src/components/scan-workflow-v4.tsx'
+          replace(path,
+              'import { resolveBarcodeCandidates } from "@/lib/inventory-api";',
+              'import { resolveBarcodeCandidates } from "@/lib/inventory-api";\nimport { isIntegerInputValue, numberOrZero, parseIntegerDraft, type NumberInputValue } from "@/lib/number-input";'
+          )
+          replace(path, '  qty: number;', '  qty: NumberInputValue;')
+          replace(path, '  const [selectedItems, setSelectedItems] = useState<Record<string, number>>({});', '  const [selectedItems, setSelectedItems] = useState<Record<string, NumberInputValue>>({});')
+          replace(path, '  const [remainingQty, setRemainingQty] = useState(0);', '  const [remainingQty, setRemainingQty] = useState<NumberInputValue>("");')
+          replace(path, '          [{ product, barcodeValue: productMatches[0].barcodeValue || value, qty: 1 }],', '          [{ product, barcodeValue: productMatches[0].barcodeValue || value, qty: "" }],')
+          replace(path, '        qty: 1,', '        qty: "",')
+          regex_replace(path,
+              r'  function changeProductQty\(productId: string, raw: string\) \{.*?\n  \}',
+              '''  function changeProductQty(productId: string, raw: string) {
+    setProductItems((current) => current.map((item) => {
+      if (item.product.id !== productId) return item;
+      const max = operation === "OB" && productLocation
+        ? productStocks[productId] ?? 0
+        : Number.MAX_SAFE_INTEGER;
+      return { ...item, qty: parseIntegerDraft(raw, 1, max) };
+    }));
+  }'''
+          )
+          replace(path,
+              '  const productTotalQty = productItems.reduce((sum, item) => sum + item.qty, 0);\n  const productStockInvalid = operation === "OB" && Boolean(productLocation) && productItems.some(\n    (item) => item.qty > (productStocks[item.product.id] ?? 0),\n  );',
+              '  const productTotalQty = productItems.reduce((sum, item) => sum + numberOrZero(item.qty), 0);\n  const productQtyInvalid = productItems.some((item) => !isIntegerInputValue(item.qty, 1));\n  const productStockInvalid = operation === "OB" && Boolean(productLocation) && productItems.some(\n    (item) => item.qty !== "" && item.qty > (productStocks[item.product.id] ?? 0),\n  );'
+          )
+          replace(path,
+              '    if (productStockInvalid) {\n      setFeedback({ kind: "error", title: "출고 수량이 현재 재고보다 많은 상품이 있습니다." });\n      return;\n    }',
+              '    if (productQtyInvalid) {\n      setFeedback({ kind: "error", title: "모든 상품의 수량을 입력하세요." });\n      return;\n    }\n    if (productStockInvalid) {\n      setFeedback({ kind: "error", title: "출고 수량이 현재 재고보다 많은 상품이 있습니다." });\n      return;\n    }'
+          )
+          replace(path, '        items: productItems.map((item) => ({ productId: item.product.id, qty: item.qty })),', '        items: productItems.map((item) => ({ productId: item.product.id, qty: Number(item.qty) })),')
+          replace(path, '  const selectedQty = Object.values(selectedItems).reduce((sum, qty) => sum + (Number(qty) || 0), 0);', '  const selectedQty = Object.values(selectedItems).reduce((sum, qty) => sum + numberOrZero(qty), 0);\n  const selectedQtyInvalid = Object.values(selectedItems).some((qty) => !isIntegerInputValue(qty, 1));')
+          replace(path, '      if (checked) next[row.productId] = 1;', '      if (checked) next[row.productId] = "";')
+          regex_replace(path,
+              r'  function changeLocationItemQty\(row: InventoryRow, raw: string\) \{.*?\n  \}',
+              '''  function changeLocationItemQty(row: InventoryRow, raw: string) {
+    const max = operation === "OB" ? row.qty : Number.MAX_SAFE_INTEGER;
+    setSelectedItems((current) => ({
+      ...current,
+      [row.productId]: parseIntegerDraft(raw, 1, max),
+    }));
+  }'''
+          )
+          replace(path, '      for (const row of visibleLocationInventory) next[row.productId] = 1;', '      for (const row of visibleLocationInventory) next[row.productId] = "";')
+          replace(path,
+              '    if (!location || selectedCount === 0) {\n      setFeedback({ kind: "error", title: "상품을 선택하세요." });\n      return;\n    }',
+              '    if (!location || selectedCount === 0) {\n      setFeedback({ kind: "error", title: "상품을 선택하세요." });\n      return;\n    }\n    if (selectedQtyInvalid) {\n      setFeedback({ kind: "error", title: "선택한 모든 상품의 수량을 입력하세요." });\n      return;\n    }'
+          )
+          replace(path, '        items: Object.entries(selectedItems).map(([productId, qty]) => ({ productId, qty })),', '        items: Object.entries(selectedItems).map(([productId, qty]) => ({ productId, qty: Number(qty) })),')
+          replace(path,
+              '    if (!Number.isInteger(remainingQty) || remainingQty < 0 || remainingQty > stockCountTarget.currentQty) {',
+              '    if (!isIntegerInputValue(remainingQty, 0, stockCountTarget.currentQty)) {'
+          )
+          replace(path, '                    const insufficient = operation === "OB" && Boolean(productLocation) && item.qty > stock;', '                    const insufficient = operation === "OB" && Boolean(productLocation) && item.qty !== "" && item.qty > stock;')
+          replace(path,
+              'disabled={!productLocation || productItems.length === 0 || productStockInvalid || busy || productDone}',
+              'disabled={!productLocation || productItems.length === 0 || productQtyInvalid || productStockInvalid || busy || productDone}'
+          )
+          replace(path,
+              'disabled={selectedCount === 0 || busy}',
+              'disabled={selectedCount === 0 || selectedQtyInvalid || busy}'
+          )
+          replace(path,
+              '<strong>{Math.max(0, stockCountTarget.currentQty - remainingQty).toLocaleString()}</strong>',
+              '<strong>{remainingQty === "" ? "-" : Math.max(0, stockCountTarget.currentQty - remainingQty).toLocaleString()}</strong>'
+          )
+          replace(path,
+              'value={remainingQty} onChange={(event) => setRemainingQty(Number(event.target.value))}',
+              'value={remainingQty} onChange={(event) => setRemainingQty(parseIntegerDraft(event.target.value, 0, stockCountTarget.currentQty))}'
+          )
+
+          # V5 보조 워크플로: DOM 강제값 제거, 실제 상태를 공란으로 관리
+          path = 'src/components/scan-workflow-v5.tsx'
+          replace(path,
+              'import { resolveBarcodeCandidates } from "@/lib/inventory-api";',
+              'import { resolveBarcodeCandidates } from "@/lib/inventory-api";\nimport { isIntegerInputValue, numberOrZero, parseIntegerDraft, type NumberInputValue } from "@/lib/number-input";'
+          )
+          replace(path, '  qty: number;', '  qty: NumberInputValue;')
+          regex_replace(path, r'function quantityInputFrom\(.*?\n\}\n\nfunction setControlledInputValue', 'function setControlledInputValue')
+          replace(path, '          next.push({ product, qty: 1, currentQty });', '          next.push({ product, qty: "", currentQty });')
+          regex_replace(path,
+              r'  function changeQty\(productId: string, raw: string\) \{.*?\n  \}',
+              '''  function changeQty(productId: string, raw: string) {
+    setDrafts((current) => current.map((item) =>
+      item.product.id === productId
+        ? { ...item, qty: parseIntegerDraft(raw, 1) }
+        : item,
+    ));
+  }'''
+          )
+          replace(path, '    const totalQty = drafts.reduce((sum, item) => sum + item.qty, 0);', '    const totalQty = drafts.reduce((sum, item) => sum + numberOrZero(item.qty), 0);\n    if (drafts.some((item) => !isIntegerInputValue(item.qty, 1))) {\n      setFeedback({ kind: "error", title: "모든 상품의 입고 수량을 입력하세요." });\n      return;\n    }')
+          replace(path, '        items: drafts.map((item) => ({ productId: item.product.id, qty: item.qty })),', '        items: drafts.map((item) => ({ productId: item.product.id, qty: Number(item.qty) })),')
+          replace(path, '  const totalQty = drafts.reduce((sum, item) => sum + item.qty, 0);', '  const totalQty = drafts.reduce((sum, item) => sum + numberOrZero(item.qty), 0);\n  const qtyInvalid = drafts.some((item) => !isIntegerInputValue(item.qty, 1));')
+          replace(path, 'disabled={busy || drafts.length === 0}', 'disabled={busy || drafts.length === 0 || qtyInvalid}')
+          regex_replace(path,
+              r'export function ScanWorkflowV5\(\) \{\n  useEffect\(\(\) => \{.*?\n  \}, \[\]\);\n\n  return \(',
+              '''export function ScanWorkflowV5() {
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      document.querySelectorAll<HTMLLabelElement>("label").forEach(injectNotePreset);
+    }, 200);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return ('''
+          )
+
+          # 재고이관
+          path = 'src/app/transfers/[id]/page.tsx'
+          replace(path,
+              'import { listInventory } from "@/lib/inventory-api";',
+              'import { listInventory } from "@/lib/inventory-api";\nimport { isIntegerInputValue, numberOrZero, parseIntegerDraft, type NumberInputValue } from "@/lib/number-input";'
+          )
+          replace(path, '  const [drafts, setDrafts] = useState<Record<string, number>>({});', '  const [drafts, setDrafts] = useState<Record<string, NumberInputValue>>({});')
+          regex_replace(path,
+              r'  const payloadFrom = useCallback\(\(next: Record<string, number>\): TransferItemInput\[\] => \(.*?\n  \), \[\]\);',
+              '''  const payloadFrom = useCallback((next: Record<string, NumberInputValue>): TransferItemInput[] => (
+    Object.entries(next).flatMap(([productId, qty]) =>
+      isIntegerInputValue(qty, 1) ? [{ productId, qty }] : [],
+    )
+  ), []);'''
+          )
+          replace(path, '  const persist = useCallback(async (next: Record<string, number>) => {', '  const persist = useCallback(async (next: Record<string, NumberInputValue>) => {')
+          replace(path, '    if (!initializedRef.current || !active) return;\n    const payload = payloadFrom(next);', '    if (!initializedRef.current || !active) return;\n    if (Object.values(next).some((qty) => qty === "")) { setSaving(false); return; }\n    const payload = payloadFrom(next);')
+          replace(path, '  const queuePersist = useCallback((next: Record<string, number>) => {', '  const queuePersist = useCallback((next: Record<string, NumberInputValue>) => {')
+          replace(path, '      if (row.qty <= 0 && !drafts[row.productId]) return false;', '      if (row.qty <= 0 && drafts[row.productId] === undefined) return false;')
+          replace(path, '  const selectedCount = Object.values(drafts).filter((qty) => qty > 0).length;', '  const selectedCount = Object.keys(drafts).length;\n  const selectedQtyInvalid = Object.values(drafts).some((qty) => !isIntegerInputValue(qty, 1));')
+          replace(path, '  const selectedQty = Object.values(drafts).reduce((sum, qty) => sum + Math.max(0, Number(qty) || 0), 0);', '  const selectedQty = Object.values(drafts).reduce((sum, qty) => sum + numberOrZero(qty), 0);')
+          regex_replace(path,
+              r'  function changeQuantity\(row: InventoryRow, raw: string\) \{.*?\n  \}',
+              '''  function changeQuantity(row: InventoryRow, raw: string) {
+    const next = { ...drafts, [row.productId]: parseIntegerDraft(raw, 1, row.qty) };
+    if (next[row.productId] === "") {
+      setDrafts(next);
+      if (debounceRef.current !== null) window.clearTimeout(debounceRef.current);
+      return;
+    }
+    queuePersist(next);
+  }'''
+          )
+          replace(path,
+              '    if (selectedCount === 0) {\n      setError("이관할 상품을 하나 이상 선택하세요.");\n      return;\n    }',
+              '    if (selectedCount === 0) {\n      setError("이관할 상품을 하나 이상 선택하세요.");\n      return;\n    }\n    if (selectedQtyInvalid) {\n      setError("선택한 모든 상품의 이관 수량을 입력하세요.");\n      return;\n    }'
+          )
+          replace(path, '            const checked = Boolean(drafts[row.productId]);', '            const checked = Object.prototype.hasOwnProperty.call(drafts, row.productId);')
+
+          # 외부이관
+          path = 'src/components/external-transfer-detail-v2.tsx'
+          replace(path,
+              'import { resolveBarcodeCandidates } from "@/lib/inventory-api";',
+              'import { resolveBarcodeCandidates } from "@/lib/inventory-api";\nimport { isIntegerInputValue, numberOrZero, parseIntegerDraft, type NumberInputValue } from "@/lib/number-input";'
+          )
+          replace(path, 'type AllocationDraft = Record<string, Record<string, number>>;', 'type AllocationDraft = Record<string, Record<string, NumberInputValue>>;')
+          replace(path, '  const [qtyDrafts, setQtyDrafts] = useState<Record<string, number>>({});', '  const [qtyDrafts, setQtyDrafts] = useState<Record<string, NumberInputValue>>({});')
+          replace(path, '  const selectedQty = items.reduce((sum, item) => sum + (qtyDrafts[item.productId] ?? item.requestedQty), 0);', '  const selectedQty = items.reduce((sum, item) => sum + numberOrZero(qtyDrafts[item.productId] ?? item.requestedQty), 0);')
+          regex_replace(path,
+              r'  async function saveQty\(item: ExternalTransferItem, qty: number\) \{.*?\n  \}',
+              '''  async function saveQty(item: ExternalTransferItem, qty: NumberInputValue) {
+    if (!isIntegerInputValue(qty, 1)) {
+      setError("상품 수량을 입력하세요.");
+      return;
+    }
+    setQtyDrafts((current) => ({ ...current, [item.productId]: qty }));
+    setWorking(true);
+    try {
+      applyJob(await setExternalTransferItemQty(jobId, item.productId, qty));
+      setMessage("수량을 저장했습니다.");
+      setError("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "수량을 저장하지 못했습니다.");
+    } finally {
+      setWorking(false);
+    }
+  }'''
+          )
+          replace(path, '    const byLocation: Record<string, number> = {};', '    const byLocation: Record<string, NumberInputValue> = {};')
+          replace(path, '      .reduce((sum, qty) => sum + (Number(qty) || 0), 0);', '      .reduce((sum, qty) => sum + numberOrZero(qty), 0);')
+          regex_replace(path,
+              r'  function changeAllocation\(item: ExternalTransferItem, locationId: string, raw: string\) \{.*?\n  \}',
+              '''  function changeAllocation(item: ExternalTransferItem, locationId: string, raw: string) {
+    const option = item.locationOptions.find((row) => row.locationId === locationId);
+    setAllocationDraft((current) => ({
+      ...current,
+      [item.productId]: {
+        ...(current[item.productId] ?? {}),
+        [locationId]: parseIntegerDraft(raw, 0, option?.availableQty ?? 0),
+      },
+    }));
+  }'''
+          )
+          replace(path,
+              '  async function saveAllocations() {\n    const invalid = items.find((item) => allocationSum(item) !== item.requestedQty);',
+              '  async function saveAllocations() {\n    const blank = items.find((item) => Object.values(allocationDraft[item.productId] ?? {}).some((qty) => qty === ""));\n    if (blank) { setError(`${blank.artist} · ${blank.nameVer}의 LOC 배정 수량을 모두 입력하세요.`); return; }\n    const invalid = items.find((item) => allocationSum(item) !== item.requestedQty);'
+          )
+          replace(path, '          qty: allocationDraft[item.productId]?.[option.locationId] ?? option.allocatedQty,', '          qty: numberOrZero(allocationDraft[item.productId]?.[option.locationId] ?? option.allocatedQty),')
+          replace(path,
+              '<div className="row-actions"><button className="button button-secondary button-compact" onClick={() => void saveQty(item, qty - 1)} disabled={!active || working || qty <= 1}>−</button><input type="number" min={1} value={qty} onChange={(event) => setQtyDrafts((current) => ({ ...current, [item.productId]: Math.max(1, Number(event.target.value) || 1) }))} onBlur={() => void saveQty(item, qty)} disabled={!active || working} style={{ width: 100 }} /><button className="button button-secondary button-compact" onClick={() => void saveQty(item, qty + 1)} disabled={!active || working}>+</button><button className="button button-danger button-compact" onClick={() => void removeItem(item)} disabled={!active || working}>삭제</button></div>',
+              '<div className="row-actions"><button className="button button-secondary button-compact" onClick={() => void saveQty(item, numberOrZero(qty) - 1)} disabled={!active || working || !isIntegerInputValue(qty, 2)}>−</button><input type="number" min={1} value={qty} onChange={(event) => setQtyDrafts((current) => ({ ...current, [item.productId]: parseIntegerDraft(event.target.value, 1) }))} onBlur={() => { if (isIntegerInputValue(qty, 1)) void saveQty(item, qty); }} disabled={!active || working} style={{ width: 100 }} /><button className="button button-secondary button-compact" onClick={() => void saveQty(item, numberOrZero(qty) + 1)} disabled={!active || working || !isIntegerInputValue(qty, 1)}>+</button><button className="button button-danger button-compact" onClick={() => void removeItem(item)} disabled={!active || working}>삭제</button></div>'
+          )
+
+          # 업무요청 신규
+          path = 'src/app/work-requests/page.tsx'
+          replace(path,
+              'import { listProducts, subscribeToInventory } from "@/lib/inventory-api";',
+              'import { listProducts, subscribeToInventory } from "@/lib/inventory-api";\nimport { isIntegerInputValue, numberOrZero, parseIntegerDraft, type NumberInputValue } from "@/lib/number-input";'
+          )
+          replace(path, '  const [selected,setSelected]=useState<Array<{product:Product;qty:number}>>([]);', '  const [selected,setSelected]=useState<Array<{product:Product;qty:NumberInputValue}>>([]);')
+          replace(path, '  const itemInput=useMemo<WorkRequestProductInput[]>(()=>selected.map((item)=>({productId:item.product.id,qty:item.qty})),[selected]);', '  const itemInput=useMemo<WorkRequestProductInput[]>(()=>selected.map((item)=>({productId:item.product.id,qty:numberOrZero(item.qty)})),[selected]);')
+          replace(path, '  const totalQty=useMemo(()=>selected.reduce((sum,item)=>sum+item.qty,0),[selected]);', '  const totalQty=useMemo(()=>selected.reduce((sum,item)=>sum+numberOrZero(item.qty),0),[selected]);')
+          replace(path, '  function setQty(productId:string,qty:number){setSelected((current)=>current.map((item)=>item.product.id===productId?{...item,qty:Math.max(1,Math.trunc(qty||1))}:item));}', '  function setQty(productId:string,raw:string){setSelected((current)=>current.map((item)=>item.product.id===productId?{...item,qty:parseIntegerDraft(raw,1)}:item));}')
+          replace(path,
+              '    if(selected.length===0){setError("요청 상품을 1개 이상 추가하세요.");return;}',
+              '    if(selected.length===0){setError("요청 상품을 1개 이상 추가하세요.");return;}\n    if(selected.some((item)=>!isIntegerInputValue(item.qty,1))){setError("모든 요청 상품의 수량을 입력하세요.");return;}'
+          )
+          replace(path, 'onChange={(event)=>setQty(item.product.id,Number(event.target.value))}', 'onChange={(event)=>setQty(item.product.id,event.target.value)}')
+
+          # 업무요청 상세
+          path = 'src/app/work-requests/[id]/page.tsx'
+          replace(path,
+              'import { listProducts, resolveBarcodeCandidates, subscribeToInventory } from "@/lib/inventory-api";',
+              'import { listProducts, resolveBarcodeCandidates, subscribeToInventory } from "@/lib/inventory-api";\nimport { isIntegerInputValue, numberOrZero, parseIntegerDraft, type NumberInputValue } from "@/lib/number-input";'
+          )
+          replace(path, '  const [editItems,setEditItems]=useState<Array<{product:Product;qty:number}>>([]);', '  const [editItems,setEditItems]=useState<Array<{product:Product;qty:NumberInputValue}>>([]);')
+          replace(path, '  const [scanQty,setScanQty]=useState(1);', '  const [scanQty,setScanQty]=useState<NumberInputValue>("");')
+          replace(path, '  const totalQty=useMemo(()=>editItems.reduce((sum,item)=>sum+item.qty,0),[editItems]);', '  const totalQty=useMemo(()=>editItems.reduce((sum,item)=>sum+numberOrZero(item.qty),0),[editItems]);')
+          replace(path,
+              '    const items=editItems.map((item)=>({productId:item.product.id,qty:item.qty}));',
+              '    if(editItems.some((item)=>!isIntegerInputValue(item.qty,1))){setError("모든 상품의 요청 수량을 입력하세요.");return;}\n    const items=editItems.map((item)=>({productId:item.product.id,qty:Number(item.qty)}));'
+          )
+          replace(path,
+              '    if(!productBarcode||!locationBarcode||!scannedProductId||!scannedLocationId){setError("상품 바코드와 LOC 바코드를 모두 확인하세요.");return;}',
+              '    if(!productBarcode||!locationBarcode||!scannedProductId||!scannedLocationId){setError("상품 바코드와 LOC 바코드를 모두 확인하세요.");return;}\n    if(!isIntegerInputValue(scanQty,1)){setError("처리 수량을 입력하세요.");return;}'
+          )
+          replace(path, 'qty:scanQty,', 'qty:Number(scanQty),')
+          replace(path, 'setScanQty(1);', 'setScanQty("");')
+          replace(path,
+              'qty:Math.max(processed,Number(event.target.value)||1)',
+              'qty:parseIntegerDraft(event.target.value,Math.max(1,processed))'
+          )
+          replace(path, 'value={scanQty} onChange={(event)=>setScanQty(Math.max(1,Number(event.target.value)||1))}', 'value={scanQty} onChange={(event)=>setScanQty(parseIntegerDraft(event.target.value,1))}')
+          replace(path, 'disabled={busy||!scannedProductId||!scannedLocationId}', 'disabled={busy||!scannedProductId||!scannedLocationId||!isIntegerInputValue(scanQty,1)}')
+
+          # KPI 관리자 숫자 입력
+          path = 'src/app/work-requests/admin/page.tsx'
+          replace(path,
+              'import { PermissionGuard } from "@/components/permission-guard";',
+              'import { PermissionGuard } from "@/components/permission-guard";\nimport { isIntegerInputValue, parseIntegerDraft, type NumberInputValue } from "@/lib/number-input";'
+          )
+          replace(path, '  const [capacity,setCapacity]=useState(item.dailyCapacity);', '  const [capacity,setCapacity]=useState<NumberInputValue>(item.dailyCapacity);')
+          replace(path, 'onChange={(event)=>setCapacity(Number(event.target.value))}', 'onChange={(event)=>setCapacity(parseIntegerDraft(event.target.value,0))}')
+          replace(path, 'disabled={busy} onClick={()=>void onSave(item,metric,capacity)}', 'disabled={busy||!isIntegerInputValue(capacity,0)} onClick={()=>void onSave(item,metric,Number(capacity))}')
+
+          # 버전 및 캐시
+          replace('src/components/app-shell.tsx', 'SAN WMS · V4.2.3', 'SAN WMS · V4.3.0')
+          replace('package.json', '"version": "4.2.3"', '"version": "4.3.0"')
+          replace('public/sw.js', 'san-wms-v4-2-3-static', 'san-wms-v4-3-0-static')
+          PY
+      - name: Validate
+        run: |
+          npm install --no-audit --no-fund
+          npm run typecheck
+          npm run build
+      - name: Commit changes
+        run: |
+          if git diff --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src package.json public/sw.js
+          git commit -m "V4.3.0: allow blank numeric inputs and clarify PIN terms"
+          git push origin HEAD:fix/v4-3-numeric-pin-terms
