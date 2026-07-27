@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { BarcodeField } from "@/components/barcode-field";
 import { PermissionGuard } from "@/components/permission-guard";
 import { listInventory } from "@/lib/inventory-api";
+import { isIntegerInputValue, numberOrZero, parseIntegerDraft, type NumberInputValue } from "@/lib/number-input";
 import {
   cancelTransferJob,
   completeTransferJob,
@@ -21,7 +22,7 @@ function TransferDetailContent() {
   const jobId = params.id;
   const [job, setJob] = useState<TransferJobDetail | null>(null);
   const [inventory, setInventory] = useState<InventoryRow[]>([]);
-  const [drafts, setDrafts] = useState<Record<string, number>>({});
+  const [drafts, setDrafts] = useState<Record<string, NumberInputValue>>({});
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -64,14 +65,15 @@ function TransferDetailContent() {
 
   const active = job?.status === "DRAFT" || job?.status === "READY";
 
-  const payloadFrom = useCallback((next: Record<string, number>): TransferItemInput[] => (
-    Object.entries(next)
-      .filter(([, qty]) => Number.isFinite(qty) && qty > 0)
-      .map(([productId, qty]) => ({ productId, qty: Math.trunc(qty) }))
+  const payloadFrom = useCallback((next: Record<string, NumberInputValue>): TransferItemInput[] => (
+    Object.entries(next).flatMap(([productId, qty]) =>
+      isIntegerInputValue(qty, 1) ? [{ productId, qty }] : [],
+    )
   ), []);
 
-  const persist = useCallback(async (next: Record<string, number>) => {
+  const persist = useCallback(async (next: Record<string, NumberInputValue>) => {
     if (!initializedRef.current || !active) return;
+    if (Object.values(next).some((qty) => qty === "")) { setSaving(false); return; }
     const payload = payloadFrom(next);
     pendingSavesRef.current += 1;
     setSaving(true);
@@ -94,7 +96,7 @@ function TransferDetailContent() {
     }
   }, [active, jobId, payloadFrom]);
 
-  const queuePersist = useCallback((next: Record<string, number>) => {
+  const queuePersist = useCallback((next: Record<string, NumberInputValue>) => {
     setDrafts(next);
     if (debounceRef.current !== null) window.clearTimeout(debounceRef.current);
     debounceRef.current = window.setTimeout(() => {
@@ -115,15 +117,16 @@ function TransferDetailContent() {
   const visibleInventory = useMemo(() => {
     const keyword = search.trim().toUpperCase();
     return inventory.filter((row) => {
-      if (row.qty <= 0 && !drafts[row.productId]) return false;
+      if (row.qty <= 0 && drafts[row.productId] === undefined) return false;
       if (!keyword) return true;
       return [row.pCodeNo, row.codeNo, row.masterCodeNo, row.artist, row.nameVer]
         .some((value) => value.toUpperCase().includes(keyword));
     });
   }, [drafts, inventory, search]);
 
-  const selectedCount = Object.values(drafts).filter((qty) => qty > 0).length;
-  const selectedQty = Object.values(drafts).reduce((sum, qty) => sum + Math.max(0, Number(qty) || 0), 0);
+  const selectedCount = Object.keys(drafts).length;
+  const selectedQtyInvalid = Object.values(drafts).some((qty) => !isIntegerInputValue(qty, 1));
+  const selectedQty = Object.values(drafts).reduce<number>((sum, qty) => sum + numberOrZero(qty), 0);
 
   function toggleProduct(row: InventoryRow, checked: boolean) {
     const next = { ...drafts };
@@ -133,9 +136,12 @@ function TransferDetailContent() {
   }
 
   function changeQuantity(row: InventoryRow, raw: string) {
-    const parsed = Number(raw);
-    const next = { ...drafts };
-    next[row.productId] = Number.isFinite(parsed) ? Math.min(row.qty, Math.max(1, Math.trunc(parsed))) : 1;
+    const next = { ...drafts, [row.productId]: parseIntegerDraft(raw, 1, row.qty) };
+    if (next[row.productId] === "") {
+      setDrafts(next);
+      if (debounceRef.current !== null) window.clearTimeout(debounceRef.current);
+      return;
+    }
     queuePersist(next);
   }
 
@@ -172,6 +178,10 @@ function TransferDetailContent() {
     if (!job || !active) return;
     if (selectedCount === 0) {
       setError("이관할 상품을 하나 이상 선택하세요.");
+      return;
+    }
+    if (selectedQtyInvalid) {
+      setError("선택한 모든 상품의 이관 수량을 입력하세요.");
       return;
     }
     if (!job.destinationLocationId) {
@@ -259,7 +269,7 @@ function TransferDetailContent() {
 
         <div className="transfer-item-list">
           {visibleInventory.map((row) => {
-            const checked = Boolean(drafts[row.productId]);
+            const checked = Object.prototype.hasOwnProperty.call(drafts, row.productId);
             return (
               <article key={row.productId} className={`transfer-item ${checked ? "selected" : ""}`}>
                 <label className="transfer-item-check">

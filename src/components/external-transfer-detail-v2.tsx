@@ -25,10 +25,11 @@ import {
 } from "@/lib/external-transfer-api";
 import { setExternalTransferItemsBatch } from "@/lib/external-transfer-batch-api";
 import { resolveBarcodeCandidates } from "@/lib/inventory-api";
+import { isIntegerInputValue, numberOrZero, parseIntegerDraft, type NumberInputValue } from "@/lib/number-input";
 import type { Product, ResolvedBarcode } from "@/types/domain";
 import styles from "@/app/external-transfers/external-transfers.module.css";
 
-type AllocationDraft = Record<string, Record<string, number>>;
+type AllocationDraft = Record<string, Record<string, NumberInputValue>>;
 
 function productFromMatch(match: ResolvedBarcode): Product | null {
   return match.target.type === "product" && "product" in match.target
@@ -43,7 +44,7 @@ export function ExternalTransferDetailV2() {
 
   const [job, setJob] = useState<ExternalTransferJob | null>(null);
   const [header, setHeader] = useState<ExternalTransferHeaderInput>({ vendorName: "" });
-  const [qtyDrafts, setQtyDrafts] = useState<Record<string, number>>({});
+  const [qtyDrafts, setQtyDrafts] = useState<Record<string, NumberInputValue>>({});
   const [candidateMatches, setCandidateMatches] = useState<ResolvedBarcode[]>([]);
   const [allocationDraft, setAllocationDraft] = useState<AllocationDraft>({});
   const [allocationOpen, setAllocationOpen] = useState(false);
@@ -81,7 +82,7 @@ export function ExternalTransferDetailV2() {
 
   const items = job?.items ?? [];
   const active = job?.status === "DRAFT" || job?.status === "ALLOCATING";
-  const selectedQty = items.reduce((sum, item) => sum + (qtyDrafts[item.productId] ?? item.requestedQty), 0);
+  const selectedQty = items.reduce((sum, item) => sum + numberOrZero(qtyDrafts[item.productId] ?? item.requestedQty), 0);
   const allocationsReady = items.length > 0
     && items.every((item) => item.requestedQty > 0 && item.allocatedTotal === item.requestedQty);
 
@@ -165,12 +166,15 @@ export function ExternalTransferDetailV2() {
     }
   }
 
-  async function saveQty(item: ExternalTransferItem, qty: number) {
-    const nextQty = Math.max(1, Math.trunc(qty || 1));
-    setQtyDrafts((current) => ({ ...current, [item.productId]: nextQty }));
+  async function saveQty(item: ExternalTransferItem, qty: NumberInputValue) {
+    if (!isIntegerInputValue(qty, 1)) {
+      setError("상품 수량을 입력하세요.");
+      return;
+    }
+    setQtyDrafts((current) => ({ ...current, [item.productId]: qty }));
     setWorking(true);
     try {
-      applyJob(await setExternalTransferItemQty(jobId, item.productId, nextQty));
+      applyJob(await setExternalTransferItemQty(jobId, item.productId, qty));
       setMessage("수량을 저장했습니다.");
       setError("");
     } catch (cause) {
@@ -197,7 +201,7 @@ export function ExternalTransferDetailV2() {
   function buildAllocationDraft(nextItems: ExternalTransferItem[]): AllocationDraft {
     const draft: AllocationDraft = {};
     for (const item of nextItems) {
-      const byLocation: Record<string, number> = {};
+      const byLocation: Record<string, NumberInputValue> = {};
       let remaining = item.requestedQty;
       for (const option of item.locationOptions) {
         const qty = item.allocatedTotal === item.requestedQty
@@ -242,25 +246,23 @@ export function ExternalTransferDetailV2() {
 
   function allocationSum(item: ExternalTransferItem): number {
     return Object.values(allocationDraft[item.productId] ?? {})
-      .reduce((sum, qty) => sum + (Number(qty) || 0), 0);
+      .reduce<number>((sum, qty) => sum + numberOrZero(qty), 0);
   }
 
   function changeAllocation(item: ExternalTransferItem, locationId: string, raw: string) {
     const option = item.locationOptions.find((row) => row.locationId === locationId);
-    const parsed = Number(raw);
-    const qty = Number.isFinite(parsed)
-      ? Math.max(0, Math.min(option?.availableQty ?? 0, Math.trunc(parsed)))
-      : 0;
     setAllocationDraft((current) => ({
       ...current,
       [item.productId]: {
         ...(current[item.productId] ?? {}),
-        [locationId]: qty,
+        [locationId]: parseIntegerDraft(raw, 0, option?.availableQty ?? 0),
       },
     }));
   }
 
   async function saveAllocations() {
+    const blank = items.find((item) => Object.values(allocationDraft[item.productId] ?? {}).some((qty) => qty === ""));
+    if (blank) { setError(`${blank.artist} · ${blank.nameVer}의 LOC 배정 수량을 모두 입력하세요.`); return; }
     const invalid = items.find((item) => allocationSum(item) !== item.requestedQty);
     if (invalid) {
       setError(`${invalid.artist} · ${invalid.nameVer}의 LOC 배정 합계를 ${invalid.requestedQty}개로 맞추세요.`);
@@ -271,7 +273,7 @@ export function ExternalTransferDetailV2() {
         .map((option) => ({
           productId: item.productId,
           locationId: option.locationId,
-          qty: allocationDraft[item.productId]?.[option.locationId] ?? option.allocatedQty,
+          qty: numberOrZero(allocationDraft[item.productId]?.[option.locationId] ?? option.allocatedQty),
         }))
         .filter((row) => row.qty > 0),
     );
@@ -359,7 +361,7 @@ export function ExternalTransferDetailV2() {
             return (
               <article key={item.productId} className={styles.itemCard}>
                 <div><strong>{item.artist || "아티스트 없음"} · {item.nameVer || "상품명 없음"}</strong><p className="small muted">{item.productBarcode || "바코드 없음"} · {item.pCodeNo || "-"} · {item.codeNo || "-"}</p><p className="small muted">전체 가용 재고 {item.availableTotal.toLocaleString()}개 · {item.locationCount}개 LOC</p></div>
-                <div className="row-actions"><button className="button button-secondary button-compact" onClick={() => void saveQty(item, qty - 1)} disabled={!active || working || qty <= 1}>−</button><input type="number" min={1} value={qty} onChange={(event) => setQtyDrafts((current) => ({ ...current, [item.productId]: Math.max(1, Number(event.target.value) || 1) }))} onBlur={() => void saveQty(item, qty)} disabled={!active || working} style={{ width: 100 }} /><button className="button button-secondary button-compact" onClick={() => void saveQty(item, qty + 1)} disabled={!active || working}>+</button><button className="button button-danger button-compact" onClick={() => void removeItem(item)} disabled={!active || working}>삭제</button></div>
+                <div className="row-actions"><button className="button button-secondary button-compact" onClick={() => void saveQty(item, numberOrZero(qty) - 1)} disabled={!active || working || !isIntegerInputValue(qty, 2)}>−</button><input type="number" min={1} value={qty} onChange={(event) => setQtyDrafts((current) => ({ ...current, [item.productId]: parseIntegerDraft(event.target.value, 1) }))} onBlur={() => { if (isIntegerInputValue(qty, 1)) void saveQty(item, qty); }} disabled={!active || working} style={{ width: 100 }} /><button className="button button-secondary button-compact" onClick={() => void saveQty(item, numberOrZero(qty) + 1)} disabled={!active || working || !isIntegerInputValue(qty, 1)}>+</button><button className="button button-danger button-compact" onClick={() => void removeItem(item)} disabled={!active || working}>삭제</button></div>
               </article>
             );
           })}

@@ -7,6 +7,7 @@ import { BarcodeField } from "@/components/barcode-field";
 import { PermissionGuard } from "@/components/permission-guard";
 import { useUser } from "@/components/user-provider";
 import { listProducts, resolveBarcodeCandidates, subscribeToInventory } from "@/lib/inventory-api";
+import { isIntegerInputValue, numberOrZero, parseIntegerDraft, type NumberInputValue } from "@/lib/number-input";
 import type { Product, ResolvedBarcode } from "@/types/domain";
 import {
   adminVoidWorkRequest,
@@ -35,7 +36,7 @@ function WorkRequestDetailContent(){
   const [request,setRequest]=useState<WorkRequest|null>(null);
   const [editing,setEditing]=useState(false);
   const [header,setHeader]=useState<WorkRequestHeaderInput>({requestedShipDate:"",vendorName:""});
-  const [editItems,setEditItems]=useState<Array<{product:Product;qty:number}>>([]);
+  const [editItems,setEditItems]=useState<Array<{product:Product;qty:NumberInputValue}>>([]);
   const [candidateIds,setCandidateIds]=useState<string[]>([]);
   const [assignees,setAssignees]=useState<WorkRequestAssignee[]>([]);
   const [productKeyword,setProductKeyword]=useState("");
@@ -45,7 +46,7 @@ function WorkRequestDetailContent(){
   const [scannedProductId,setScannedProductId]=useState<string|undefined>();
   const [scannedLocationId,setScannedLocationId]=useState<string|undefined>();
   const [productChoices,setProductChoices]=useState<Array<{id:string;label:string}>>([]);
-  const [scanQty,setScanQty]=useState(1);
+  const [scanQty,setScanQty]=useState<NumberInputValue>("");
   const [resetToken,setResetToken]=useState(0);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
@@ -60,7 +61,7 @@ function WorkRequestDetailContent(){
   const load=useCallback(async()=>{try{apply(await getWorkRequest(params.id));setError("");}catch(cause){setError(cause instanceof Error?cause.message:"업무요청을 불러오지 못했습니다.");}},[apply,params.id]);
   useEffect(()=>{void load();return subscribeToInventory(()=>void load());},[load]);
 
-  const totalQty=useMemo(()=>editItems.reduce((sum,item)=>sum+item.qty,0),[editItems]);
+  const totalQty=useMemo(()=>editItems.reduce((sum,item)=>sum+numberOrZero(item.qty),0),[editItems]);
   useEffect(()=>{if(!header.requestedShipDate)return;const timer=window.setTimeout(()=>void listWorkRequestAssignees(header.requestedShipDate,editItems.length,totalQty).then(setAssignees).catch(()=>undefined),150);return()=>window.clearTimeout(timer);},[header.requestedShipDate,editItems.length,totalQty]);
   useEffect(()=>{if(!productKeyword.trim()){setProductResults([]);return;}const timer=window.setTimeout(()=>void listProducts(productKeyword,false).then((items)=>setProductResults(items.slice(0,20))).catch(()=>undefined),180);return()=>window.clearTimeout(timer);},[productKeyword]);
 
@@ -69,7 +70,8 @@ function WorkRequestDetailContent(){
 
   async function saveEdit(){
     if(!request)return;
-    const items=editItems.map((item)=>({productId:item.product.id,qty:item.qty}));
+    if(editItems.some((item)=>!isIntegerInputValue(item.qty,1))){setError("모든 상품의 요청 수량을 입력하세요.");return;}
+    const items=editItems.map((item)=>({productId:item.product.id,qty:Number(item.qty)}));
     if(request.status==="SCHEDULED")await run(()=>updateWorkRequestBeforeStart(request.id,header,candidateIds,items),"업무요청을 수정했습니다.");
     else{
       const reason=window.prompt("배정 작업자에게 전달할 수정 사유를 입력하세요.","")??"";
@@ -101,11 +103,12 @@ function WorkRequestDetailContent(){
   async function processScan(){
     if(!request)return;
     if(!productBarcode||!locationBarcode||!scannedProductId||!scannedLocationId){setError("상품 바코드와 LOC 바코드를 모두 확인하세요.");return;}
+    if(!isIntegerInputValue(scanQty,1)){setError("처리 수량을 입력하세요.");return;}
     setBusy(true);setError("");setMessage("");
     try{
-      const next=await scanWorkRequestItem({requestId:request.id,productBarcode,locationBarcode,qty:scanQty,productId:scannedProductId,locationId:scannedLocationId,idempotencyKey:crypto.randomUUID()});
+      const next=await scanWorkRequestItem({requestId:request.id,productBarcode,locationBarcode,qty:Number(scanQty),productId:scannedProductId,locationId:scannedLocationId,idempotencyKey:crypto.randomUUID()});
       apply(next);setMessage(next.status==="COMPLETED"?"요청 수량 전체 출고가 완료되어 출고명세서를 생성했습니다.":`${scanQty.toLocaleString()}개를 출고 처리했습니다.`);
-      setProductBarcode("");setLocationBarcode("");setScannedProductId(undefined);setScannedLocationId(undefined);setProductChoices([]);setScanQty(1);setResetToken((value)=>value+1);
+      setProductBarcode("");setLocationBarcode("");setScannedProductId(undefined);setScannedLocationId(undefined);setProductChoices([]);setScanQty("");setResetToken((value)=>value+1);
     }catch(cause){setError(cause instanceof Error?cause.message:"출고 스캔 처리 실패");}
     finally{setBusy(false);}
   }
@@ -136,7 +139,7 @@ function WorkRequestDetailContent(){
         <div className={styles.formGrid}><label>출고일<input type="date" value={header.requestedShipDate} onChange={(event)=>setHeader({...header,requestedShipDate:event.target.value})}/></label><label>외부업체<input value={header.vendorName} onChange={(event)=>setHeader({...header,vendorName:event.target.value})}/></label><label>담당자<input value={header.vendorContact||""} onChange={(event)=>setHeader({...header,vendorContact:event.target.value})}/></label><label>연락처<input value={header.vendorPhone||""} onChange={(event)=>setHeader({...header,vendorPhone:event.target.value})}/></label><label className={styles.spanTwo}>주소<input value={header.vendorAddress||""} onChange={(event)=>setHeader({...header,vendorAddress:event.target.value})}/></label><label>목적<input value={header.purpose||""} onChange={(event)=>setHeader({...header,purpose:event.target.value})}/></label><label>비고<input value={header.note||""} onChange={(event)=>setHeader({...header,note:event.target.value})}/></label></div>
         <div className={styles.productSearch}><input value={productKeyword} onChange={(event)=>setProductKeyword(event.target.value)} placeholder="수정 요청에 상품 추가 검색"/><span></span></div>
         {productResults.length>0?<div className={styles.searchResults}>{productResults.map((product)=><div key={product.id} className={styles.searchRow}><div><strong>{product.artist} · {product.nameVer}</strong><p>{product.codeNo}</p></div><span></span><button className="button button-secondary button-compact" onClick={()=>addProduct(product)}>추가</button></div>)}</div>:null}
-        <div className={styles.products}>{editItems.map((item)=>{const processed=request.items.find((existing)=>existing.productId===item.product.id)?.processedQty??0;return <div key={item.product.id} className={styles.selectedRow}><div><strong>{item.product.artist} · {item.product.nameVer}</strong><p>이미 처리 {processed}개</p></div><input type="number" min={Math.max(1,processed)} value={item.qty} onChange={(event)=>setEditItems((current)=>current.map((row)=>row.product.id===item.product.id?{...row,qty:Math.max(processed,Number(event.target.value)||1)}:row))}/><button className="button button-secondary button-compact" disabled={processed>0} onClick={()=>setEditItems((current)=>current.filter((row)=>row.product.id!==item.product.id))}>제거</button></div>;})}</div>
+        <div className={styles.products}>{editItems.map((item)=>{const processed=request.items.find((existing)=>existing.productId===item.product.id)?.processedQty??0;return <div key={item.product.id} className={styles.selectedRow}><div><strong>{item.product.artist} · {item.product.nameVer}</strong><p>이미 처리 {processed}개</p></div><input type="number" min={Math.max(1,processed)} value={item.qty} onChange={(event)=>setEditItems((current)=>current.map((row)=>row.product.id===item.product.id?{...row,qty:parseIntegerDraft(event.target.value,Math.max(1,processed))}:row))}/><button className="button button-secondary button-compact" disabled={processed>0} onClick={()=>setEditItems((current)=>current.filter((row)=>row.product.id!==item.product.id))}>제거</button></div>;})}</div>
         {request.status==="SCHEDULED"?<div className={styles.assigneeGrid}>{assignees.map((item)=><label key={item.userId} className={`${styles.assignee} ${!item.canAccept&&!candidateIds.includes(item.userId)?styles.unavailable:""}`}><input type="checkbox" checked={candidateIds.includes(item.userId)} disabled={!item.canAccept&&!candidateIds.includes(item.userId)} onChange={(event)=>setCandidateIds((current)=>event.target.checked?[...current,item.userId]:current.filter((id)=>id!==item.userId))}/><span className={styles.assigneeText}><strong>{item.userName}</strong><small>잔여 {item.remainingAfter} · {item.canAccept?"배정 가능":"KPI 초과"}</small></span></label>)}</div>:null}
         <button className="button button-primary" onClick={()=>void saveEdit()} disabled={busy}>{request.status==="SCHEDULED"?"수정 저장":"작업자에게 수정 승인 요청"}</button>
       </>}
@@ -146,7 +149,7 @@ function WorkRequestDetailContent(){
 
     {pendingChanges.length>0?<section className="panel page-stack"><div><p className="eyebrow">CHANGE APPROVAL</p><h3>수정 승인 대기</h3></div>{pendingChanges.map((change)=><article key={change.id} className={styles.requestCard}><div><strong>{change.requestedByName}의 수정 요청</strong><p>{change.reason||"사유 미입력"}</p><p>{new Date(change.requestedAt).toLocaleString("ko-KR")}</p></div><div><small>변경 출고일</small><strong>{String(change.proposedHeader.requested_ship_date||request.requestedShipDate)}</strong><p>{change.proposedItems.length} SKU</p></div>{request.isAssigned?<div className="action-row"><button className="button button-primary button-compact" onClick={()=>{const note=window.prompt("승인 메모","")??"";void run(()=>approveWorkRequestChange(change.id,note),"수정 요청을 승인했습니다.");}}>승인</button><button className="button button-secondary button-compact" onClick={()=>{const note=window.prompt("반려 사유","")??"";void run(()=>rejectWorkRequestChange(change.id,note),"수정 요청을 반려했습니다.");}}>반려</button></div>:<span className="muted">배정 작업자 승인 대기</span>}</article>)}</section>:null}
 
-    {canScan?<section className="panel page-stack"><div className="section-heading"><div><p className="eyebrow">ACTUAL OUTBOUND SCAN</p><h3>실제 바코드 출고 처리</h3></div><span className="status-badge active">성공 스캔 수량만 즉시 차감</span></div><p className={styles.notice}>상품 바코드와 실제 출고 LOC 바코드를 확인한 뒤 수량을 처리합니다. 성공 시 기존 출고 거래가 생성되고 해당 수량만 재고에서 차감됩니다.</p><BarcodeField label="상품 바코드" placeholder="상품 바코드 촬영 또는 입력" value={productBarcode} onSubmit={scanProduct} disabled={busy} resetToken={resetToken}/>{productChoices.length>0?<label>공통 바코드 상품 선택<select value={scannedProductId||""} onChange={(event)=>setScannedProductId(event.target.value)}><option value="" disabled>정확한 상품/버전 선택</option>{productChoices.map((item)=><option key={item.id} value={item.id}>{item.label}</option>)}</select></label>:null}<BarcodeField label="출고 LOC 바코드" placeholder="실제 출고 위치 바코드 촬영 또는 입력" value={locationBarcode} onSubmit={scanLocation} disabled={busy} resetToken={resetToken}/><label>처리 수량<input type="number" min={1} value={scanQty} onChange={(event)=>setScanQty(Math.max(1,Number(event.target.value)||1))}/></label><button className="button button-primary" onClick={()=>void processScan()} disabled={busy||!scannedProductId||!scannedLocationId}>{busy?"출고 처리 중...":"스캔 수량 출고 확정"}</button></section>:null}
+    {canScan?<section className="panel page-stack"><div className="section-heading"><div><p className="eyebrow">ACTUAL OUTBOUND SCAN</p><h3>실제 바코드 출고 처리</h3></div><span className="status-badge active">성공 스캔 수량만 즉시 차감</span></div><p className={styles.notice}>상품 바코드와 실제 출고 LOC 바코드를 확인한 뒤 수량을 처리합니다. 성공 시 기존 출고 거래가 생성되고 해당 수량만 재고에서 차감됩니다.</p><BarcodeField label="상품 바코드" placeholder="상품 바코드 촬영 또는 입력" value={productBarcode} onSubmit={scanProduct} disabled={busy} resetToken={resetToken}/>{productChoices.length>0?<label>공통 바코드 상품 선택<select value={scannedProductId||""} onChange={(event)=>setScannedProductId(event.target.value)}><option value="" disabled>정확한 상품/버전 선택</option>{productChoices.map((item)=><option key={item.id} value={item.id}>{item.label}</option>)}</select></label>:null}<BarcodeField label="출고 LOC 바코드" placeholder="실제 출고 위치 바코드 촬영 또는 입력" value={locationBarcode} onSubmit={scanLocation} disabled={busy} resetToken={resetToken}/><label>처리 수량<input type="number" min={1} value={scanQty} onChange={(event)=>setScanQty(parseIntegerDraft(event.target.value,1))}/></label><button className="button button-primary" onClick={()=>void processScan()} disabled={busy||!scannedProductId||!scannedLocationId||!isIntegerInputValue(scanQty,1)}>{busy?"출고 처리 중...":"스캔 수량 출고 확정"}</button></section>:null}
 
     <section className="panel page-stack"><div className="section-heading"><div><p className="eyebrow">ITEM PROGRESS</p><h3>품목별 처리 현황</h3></div>{request.documentId?<Link className="button button-secondary" href={`/work-requests/documents/${request.documentId}`}>출고명세서 조회·출력</Link>:null}</div><div className="table-wrap"><table><thead><tr><th>상품</th><th>CODE_NO</th><th>요청</th><th>처리</th><th>남음</th></tr></thead><tbody>{request.items.map((item)=><tr key={item.id}><td><strong>{item.artist} · {item.nameVer}</strong></td><td>{item.codeNo}</td><td>{item.requestedQty}</td><td><strong>{item.processedQty}</strong></td><td>{item.remainingQty}</td></tr>)}</tbody></table></div></section>
     {request.scans.length>0?<section className="panel"><div><p className="eyebrow">SCAN HISTORY</p><h3>실제 출고 스캔 이력</h3></div><div className="table-wrap"><table><thead><tr><th>처리 일시</th><th>상품</th><th>LOC</th><th>수량</th><th>작업자</th></tr></thead><tbody>{request.scans.map((scan)=>{const item=request.items.find((row)=>row.productId===scan.productId);return <tr key={scan.id}><td>{new Date(scan.scannedAt).toLocaleString("ko-KR")}</td><td>{item?`${item.artist} · ${item.nameVer}`:scan.productId}</td><td>{scan.locationCode}</td><td><strong>{scan.qty}</strong></td><td>{scan.scannedByName}</td></tr>;})}</tbody></table></div></section>:null}

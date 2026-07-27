@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { PermissionGuard } from "@/components/permission-guard";
+import { isIntegerInputValue, parseIntegerDraft, type NumberInputValue } from "@/lib/number-input";
 import {
   adminListWorkerKpi,
   adminSetBusinessCalendar,
@@ -66,9 +67,9 @@ function WorkRequestAdminContent(){
 
 function KpiRow({item,busy,onSave,onOverride}:{item:WorkerKpiStatus;busy:boolean;onSave:(item:WorkerKpiStatus,metric:KpiMetricType,capacity:number)=>Promise<void>;onOverride:(item:WorkerKpiStatus)=>Promise<void>}){
   const [metric,setMetric]=useState<KpiMetricType>(item.metricType);
-  const [capacity,setCapacity]=useState(item.dailyCapacity);
+  const [capacity,setCapacity]=useState<NumberInputValue>(item.dailyCapacity);
   useEffect(()=>{setMetric(item.metricType);setCapacity(item.dailyCapacity);},[item]);
-  return <tr><td><strong>{item.userName}</strong></td><td>{item.role}</td><td><select value={metric} onChange={(event)=>setMetric(event.target.value as KpiMetricType)}><option value="WORKLOAD_POINTS">업무점수</option><option value="REQUEST_COUNT">요청 건수</option><option value="SKU_LINES">SKU 수</option><option value="TOTAL_QTY">총수량</option></select></td><td><input type="number" min={0} value={capacity} onChange={(event)=>setCapacity(Number(event.target.value))}/>{item.overrideCapacity!=null?<small className="muted"> · 예외 {item.overrideCapacity}</small>:null}</td><td>{item.usedCapacity}</td><td><strong>{item.remainingCapacity}</strong></td><td><div className="action-row"><button className="button button-secondary button-compact" disabled={busy} onClick={()=>void onSave(item,metric,capacity)}>기본 저장</button><button className="button button-secondary button-compact" disabled={busy} onClick={()=>void onOverride(item)}>날짜 예외</button></div></td></tr>;
+  return <tr><td><strong>{item.userName}</strong></td><td>{item.role}</td><td><select value={metric} onChange={(event)=>setMetric(event.target.value as KpiMetricType)}><option value="WORKLOAD_POINTS">업무점수</option><option value="REQUEST_COUNT">요청 건수</option><option value="SKU_LINES">SKU 수</option><option value="TOTAL_QTY">총수량</option></select></td><td><input type="number" min={0} value={capacity} onChange={(event)=>setCapacity(parseIntegerDraft(event.target.value,0))}/>{item.overrideCapacity!=null?<small className="muted"> · 예외 {item.overrideCapacity}</small>:null}</td><td>{item.usedCapacity}</td><td><strong>{item.remainingCapacity}</strong></td><td><div className="action-row"><button className="button button-secondary button-compact" disabled={busy||!isIntegerInputValue(capacity,0)} onClick={()=>void onSave(item,metric,Number(capacity))}>기본 저장</button><button className="button button-secondary button-compact" disabled={busy} onClick={()=>void onOverride(item)}>날짜 예외</button></div></td></tr>;
 }
 
 export default function WorkRequestAdminPage(){return <PermissionGuard permission="manage_worker_kpi"><WorkRequestAdminContent/></PermissionGuard>;}

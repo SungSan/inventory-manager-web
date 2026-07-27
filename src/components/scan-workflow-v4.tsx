@@ -10,6 +10,7 @@ import {
 } from "@/components/multi-product-barcode-picker";
 import { createIdempotencyKey } from "@/lib/barcode";
 import { resolveBarcodeCandidates } from "@/lib/inventory-api";
+import { isIntegerInputValue, numberOrZero, parseIntegerDraft, type NumberInputValue } from "@/lib/number-input";
 import {
   confirmRemainingStock,
   listLocationInventory,
@@ -29,7 +30,7 @@ type WorkflowMode = "start" | "product" | "location";
 interface ProductDraft {
   product: Product;
   barcodeValue: string;
-  qty: number;
+  qty: NumberInputValue;
 }
 
 interface StockCountTarget {
@@ -87,11 +88,11 @@ export function ScanWorkflowV4() {
   const [location, setLocation] = useState<Location | null>(null);
   const [locationInventory, setLocationInventory] = useState<InventoryRow[]>([]);
   const [locationSearch, setLocationSearch] = useState("");
-  const [selectedItems, setSelectedItems] = useState<Record<string, number>>({});
+  const [selectedItems, setSelectedItems] = useState<Record<string, NumberInputValue>>({});
 
   const [note, setNote] = useState("");
   const [stockCountTarget, setStockCountTarget] = useState<StockCountTarget | null>(null);
-  const [remainingQty, setRemainingQty] = useState(0);
+  const [remainingQty, setRemainingQty] = useState<NumberInputValue>("");
   const [stockCountReason, setStockCountReason] = useState("");
 
   const [busy, setBusy] = useState(false);
@@ -200,7 +201,7 @@ export function ScanWorkflowV4() {
         const product = productFromResolved(productMatches[0]);
         if (!product) throw new Error("상품 정보를 읽지 못했습니다.");
         activateProductWorkflow(
-          [{ product, barcodeValue: productMatches[0].barcodeValue || value, qty: 1 }],
+          [{ product, barcodeValue: productMatches[0].barcodeValue || value, qty: "" }],
           value,
         );
         return true;
@@ -239,7 +240,7 @@ export function ScanWorkflowV4() {
       items.map((item) => ({
         product: item.product,
         barcodeValue: item.match.barcodeValue,
-        qty: 1,
+        qty: "",
       })),
       barcodeValue,
     );
@@ -295,12 +296,12 @@ export function ScanWorkflowV4() {
   }, [operation, productItems.length]);
 
   function changeProductQty(productId: string, raw: string) {
-    const parsed = Number(raw);
     setProductItems((current) => current.map((item) => {
       if (item.product.id !== productId) return item;
-      let qty = Number.isFinite(parsed) ? Math.max(1, Math.trunc(parsed)) : 1;
-      if (operation === "OB" && productLocation) qty = Math.min(productStocks[productId] ?? 0, qty);
-      return { ...item, qty: Math.max(1, qty) };
+      const max = operation === "OB" && productLocation
+        ? productStocks[productId] ?? 0
+        : Number.MAX_SAFE_INTEGER;
+      return { ...item, qty: parseIntegerDraft(raw, 1, max) };
     }));
   }
 
@@ -308,9 +309,10 @@ export function ScanWorkflowV4() {
     setProductItems((current) => current.filter((item) => item.product.id !== productId));
   }
 
-  const productTotalQty = productItems.reduce((sum, item) => sum + item.qty, 0);
+  const productTotalQty = productItems.reduce((sum, item) => sum + numberOrZero(item.qty), 0);
+  const productQtyInvalid = productItems.some((item) => !isIntegerInputValue(item.qty, 1));
   const productStockInvalid = operation === "OB" && Boolean(productLocation) && productItems.some(
-    (item) => item.qty > (productStocks[item.product.id] ?? 0),
+    (item) => item.qty !== "" && item.qty > (productStocks[item.product.id] ?? 0),
   );
 
   async function confirmProductBatch() {
@@ -320,6 +322,10 @@ export function ScanWorkflowV4() {
     }
     if (!productLocation || productItems.length === 0) {
       setFeedback({ kind: "error", title: "상품과 로케이션을 확인하세요." });
+      return;
+    }
+    if (productQtyInvalid) {
+      setFeedback({ kind: "error", title: "모든 상품의 수량을 입력하세요." });
       return;
     }
     if (productStockInvalid) {
@@ -336,7 +342,7 @@ export function ScanWorkflowV4() {
       const result = await postLocationInventoryBatch({
         operation,
         locationId: productLocation.id,
-        items: productItems.map((item) => ({ productId: item.product.id, qty: item.qty })),
+        items: productItems.map((item) => ({ productId: item.product.id, qty: Number(item.qty) })),
         note: note.trim() || undefined,
         idempotencyKey: createIdempotencyKey(),
       });
@@ -371,30 +377,30 @@ export function ScanWorkflowV4() {
   }, [locationInventory, locationSearch]);
 
   const selectedCount = Object.keys(selectedItems).length;
-  const selectedQty = Object.values(selectedItems).reduce((sum, qty) => sum + (Number(qty) || 0), 0);
+  const selectedQty = Object.values(selectedItems).reduce<number>((sum, qty) => sum + numberOrZero(qty), 0);
+  const selectedQtyInvalid = Object.values(selectedItems).some((qty) => !isIntegerInputValue(qty, 1));
 
   function toggleLocationItem(row: InventoryRow, checked: boolean) {
     setSelectedItems((current) => {
       const next = { ...current };
-      if (checked) next[row.productId] = 1;
+      if (checked) next[row.productId] = "";
       else delete next[row.productId];
       return next;
     });
   }
 
   function changeLocationItemQty(row: InventoryRow, raw: string) {
-    const parsed = Number(raw);
     const max = operation === "OB" ? row.qty : Number.MAX_SAFE_INTEGER;
-    const nextQty = Number.isFinite(parsed)
-      ? Math.max(1, Math.min(max, Math.trunc(parsed)))
-      : 1;
-    setSelectedItems((current) => ({ ...current, [row.productId]: nextQty }));
+    setSelectedItems((current) => ({
+      ...current,
+      [row.productId]: parseIntegerDraft(raw, 1, max),
+    }));
   }
 
   function selectAllVisible() {
     setSelectedItems((current) => {
       const next = { ...current };
-      for (const row of visibleLocationInventory) next[row.productId] = 1;
+      for (const row of visibleLocationInventory) next[row.productId] = "";
       return next;
     });
   }
@@ -408,6 +414,10 @@ export function ScanWorkflowV4() {
       setFeedback({ kind: "error", title: "상품을 선택하세요." });
       return;
     }
+    if (selectedQtyInvalid) {
+      setFeedback({ kind: "error", title: "선택한 모든 상품의 수량을 입력하세요." });
+      return;
+    }
     if (!window.confirm(
       `${location.locationCode}에서 ${selectedCount} SKU / ${selectedQty.toLocaleString()}개를 ${operation === "IB" ? "입고" : "출고"}할까요?`,
     )) return;
@@ -418,7 +428,7 @@ export function ScanWorkflowV4() {
       const result = await postLocationInventoryBatch({
         operation,
         locationId: location.id,
-        items: Object.entries(selectedItems).map(([productId, qty]) => ({ productId, qty })),
+        items: Object.entries(selectedItems).map(([productId, qty]) => ({ productId, qty: Number(qty) })),
         note: note.trim() || undefined,
         idempotencyKey: createIdempotencyKey(),
       });
@@ -452,7 +462,7 @@ export function ScanWorkflowV4() {
 
   async function confirmStockCount() {
     if (!stockCountTarget) return;
-    if (!Number.isInteger(remainingQty) || remainingQty < 0 || remainingQty > stockCountTarget.currentQty) {
+    if (!isIntegerInputValue(remainingQty, 0, stockCountTarget.currentQty)) {
       setFeedback({
         kind: "error",
         title: "남은 수량 확인",
@@ -547,7 +557,7 @@ export function ScanWorkflowV4() {
             <div className={styles.locationItemList}>
               {productItems.map((item) => {
                 const stock = productStocks[item.product.id] ?? 0;
-                const insufficient = operation === "OB" && Boolean(productLocation) && item.qty > stock;
+                    const insufficient = operation === "OB" && Boolean(productLocation) && item.qty !== "" && item.qty > stock;
                 return (
                   <article key={item.product.id} className={`${styles.locationItem} ${styles.selected}`}>
                     <div className={styles.itemCheck}><span><strong>{item.product.artist || "아티스트 없음"}</strong><b>{item.product.nameVer || "상품명/버전 없음"}</b><small>{item.product.pCodeNo || "-"} · {item.product.codeNo || "-"}</small></span></div>
@@ -572,7 +582,7 @@ export function ScanWorkflowV4() {
           <section className="panel">
             <div className="section-heading"><div><p className="eyebrow">STEP 3</p><h3>{operation === "IB" ? "입고" : "출고"} 확정</h3></div></div>
             <label>메모(선택)<input value={note} onChange={(event) => setNote(event.target.value)} placeholder="작업 사유 또는 메모" disabled={busy || productDone} /></label>
-            <button className="button button-primary button-full" onClick={() => void confirmProductBatch()} disabled={!productLocation || productItems.length === 0 || productStockInvalid || busy || productDone}>{busy ? "처리 중..." : `${productItems.length} SKU / ${productTotalQty.toLocaleString()}개 ${operation === "IB" ? "입고" : "출고"} 확정`}</button>
+            <button className="button button-primary button-full" onClick={() => void confirmProductBatch()} disabled={!productLocation || productItems.length === 0 || productQtyInvalid || productStockInvalid || busy || productDone}>{busy ? "처리 중..." : `${productItems.length} SKU / ${productTotalQty.toLocaleString()}개 ${operation === "IB" ? "입고" : "출고"} 확정`}</button>
           </section>
         </>
       ) : null}
@@ -595,7 +605,7 @@ export function ScanWorkflowV4() {
             })}
             {visibleLocationInventory.length === 0 ? <p className="empty-state">이 로케이션에 표시할 재고가 없습니다.</p> : null}
           </div>
-          <div className={styles.batchFooter}><label>메모(선택)<input value={note} onChange={(event) => setNote(event.target.value)} placeholder="작업 사유 또는 메모" disabled={busy} /></label><div className={styles.batchSummary}><span>선택 합계</span><strong>{selectedCount} SKU / {selectedQty.toLocaleString()}개</strong></div><button className="button button-primary" onClick={() => void confirmLocationBatch()} disabled={selectedCount === 0 || busy}>{busy ? "처리 중..." : operation === "IB" ? "선택 상품 입고" : "선택 상품 출고"}</button></div>
+          <div className={styles.batchFooter}><label>메모(선택)<input value={note} onChange={(event) => setNote(event.target.value)} placeholder="작업 사유 또는 메모" disabled={busy} /></label><div className={styles.batchSummary}><span>선택 합계</span><strong>{selectedCount} SKU / {selectedQty.toLocaleString()}개</strong></div><button className="button button-primary" onClick={() => void confirmLocationBatch()} disabled={selectedCount === 0 || selectedQtyInvalid || busy}>{busy ? "처리 중..." : operation === "IB" ? "선택 상품 입고" : "선택 상품 출고"}</button></div>
         </section>
       ) : null}
 
@@ -605,7 +615,7 @@ export function ScanWorkflowV4() {
 
       {candidateMatches.length > 1 ? <MultiProductBarcodePicker matches={candidateMatches} title="공통 바코드 상품 선택" description="필요한 상품을 복수로 체크하세요. 수량은 작업 선택 후 품목 목록에서 변경합니다." confirmLabel="선택 상품으로 계속" busy={busy} onConfirm={handleCommonProductSelection} onClose={() => { setCandidateMatches([]); setFirstBarcode(""); setResetToken((value) => value + 1); }} /> : null}
 
-      {stockCountTarget ? <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="남은 수량 확정"><section className={`selection-modal ${styles.stockCountModal}`}><div className="section-heading"><div><p className="eyebrow">STOCK COUNT</p><h3>남은 수량</h3><p className="muted">{stockCountTarget.locationCode} · {stockCountTarget.artist} · {stockCountTarget.nameVer}</p></div><button className="button button-ghost" onClick={() => setStockCountTarget(null)} disabled={busy}>닫기</button></div><div className={styles.stockCountNumbers}><div><span>현재 전산 재고</span><strong>{stockCountTarget.currentQty.toLocaleString()}</strong></div><div><span>차이 출고 수량</span><strong>{Math.max(0, stockCountTarget.currentQty - remainingQty).toLocaleString()}</strong></div></div><label>실제 남은 수량<input type="number" min={0} max={stockCountTarget.currentQty} value={remainingQty} onChange={(event) => setRemainingQty(Number(event.target.value))} disabled={busy} /></label><label>사유·메모(선택)<input value={stockCountReason} onChange={(event) => setStockCountReason(event.target.value)} placeholder="비어 있으면 재고 실사 수량으로 저장" disabled={busy} /></label><button className="button button-primary button-full" onClick={() => void confirmStockCount()} disabled={busy}>{busy ? "처리 중..." : "남은 수량 확정"}</button></section></div> : null}
+      {stockCountTarget ? <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="남은 수량 확정"><section className={`selection-modal ${styles.stockCountModal}`}><div className="section-heading"><div><p className="eyebrow">STOCK COUNT</p><h3>남은 수량</h3><p className="muted">{stockCountTarget.locationCode} · {stockCountTarget.artist} · {stockCountTarget.nameVer}</p></div><button className="button button-ghost" onClick={() => setStockCountTarget(null)} disabled={busy}>닫기</button></div><div className={styles.stockCountNumbers}><div><span>현재 전산 재고</span><strong>{stockCountTarget.currentQty.toLocaleString()}</strong></div><div><span>차이 출고 수량</span><strong>{remainingQty === "" ? "-" : Math.max(0, stockCountTarget.currentQty - remainingQty).toLocaleString()}</strong></div></div><label>실제 남은 수량<input type="number" min={0} max={stockCountTarget.currentQty} value={remainingQty} onChange={(event) => setRemainingQty(parseIntegerDraft(event.target.value, 0, stockCountTarget.currentQty))} disabled={busy} /></label><label>사유·메모(선택)<input value={stockCountReason} onChange={(event) => setStockCountReason(event.target.value)} placeholder="비어 있으면 재고 실사 수량으로 저장" disabled={busy} /></label><button className="button button-primary button-full" onClick={() => void confirmStockCount()} disabled={busy}>{busy ? "처리 중..." : "남은 수량 확정"}</button></section></div> : null}
     </div>
   );
 }

@@ -168,10 +168,12 @@ export function IdentityConsentGate({ children }: { children: React.ReactNode })
               <label>
                 새 개인 PIN
                 <input type="password" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={newPin} onChange={(event) => setNewPin(digitsOnly(event.target.value))} autoComplete="new-password" required disabled={submitting} />
+                <span className="muted small">숫자 6자리를 입력하세요. 예: 123456</span>
               </label>
               <label>
                 새 개인 PIN 확인
                 <input type="password" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={pinConfirm} onChange={(event) => setPinConfirm(digitsOnly(event.target.value))} autoComplete="new-password" required disabled={submitting} />
+                <span className="muted small">위에서 설정한 숫자 6자리 PIN을 다시 입력하세요.</span>
               </label>
             </>
           ) : (
@@ -181,15 +183,17 @@ export function IdentityConsentGate({ children }: { children: React.ReactNode })
           <label className={styles.spanTwo}>
             최종 확인 PIN
             <input type="password" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={finalPin} onChange={(event) => setFinalPin(digitsOnly(event.target.value))} autoComplete="current-password" required disabled={submitting} />
-            <p className={styles.pinHint}>PIN 원문은 저장되지 않으며 bcrypt 방식의 일방향 해시만 서버 비공개 영역에 저장됩니다.</p>
+            <p className={styles.pinHint}>숫자 6자리를 입력하세요. PIN 원문은 저장되지 않으며 bcrypt 방식의 일방향 해시만 서버 비공개 영역에 저장됩니다.</p>
           </label>
         </section>
+
+        <p className={styles.notice}>동의 시점에 서버에서 활성화된 최신 이용조건 버전 <strong>{status.terms.version}</strong>이 자동 적용됩니다. 사용자가 버전을 직접 입력할 필요가 없습니다.</p>
 
         <section className={styles.documentGrid}>
           <article className={styles.document}>
             <div className={styles.documentHeader}>
               <div><p className="eyebrow">TERMS</p><h3>{status.terms.title}</h3></div>
-              <span className={styles.status}>버전 {status.terms.version}</span>
+              <span className={styles.status}>현재 적용 버전 {status.terms.version}</span>
             </div>
             <pre className={styles.documentBody}>{status.terms.content}</pre>
           </article>

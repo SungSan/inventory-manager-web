@@ -11,6 +11,7 @@ import {
 import { ScanWorkflowV4 } from "@/components/scan-workflow-v4";
 import { createIdempotencyKey } from "@/lib/barcode";
 import { resolveBarcodeCandidates } from "@/lib/inventory-api";
+import { isIntegerInputValue, numberOrZero, parseIntegerDraft, type NumberInputValue } from "@/lib/number-input";
 import { listLocationInventory, postLocationInventoryBatch } from "@/lib/scan-operation-api";
 import type { Location, Product, ResolvedBarcode } from "@/types/domain";
 
@@ -18,7 +19,7 @@ const NOTE_PRESETS = ["국내 출고", "일반 출고", "글로비 출고", "위
 
 interface LocationAddDraft {
   product: Product;
-  qty: number;
+  qty: NumberInputValue;
   currentQty: number;
 }
 
@@ -32,25 +33,6 @@ function locationFromResolved(item: ResolvedBarcode): Location | null {
   return item.target.type === "location" && "location" in item.target
     ? item.target.location
     : null;
-}
-
-function quantityInputFrom(target: Element | null): HTMLInputElement | null {
-  return target?.closest("article")?.querySelector<HTMLInputElement>('input[type="number"]') ?? null;
-}
-
-function markBlank(input: HTMLInputElement | null) {
-  if (!input) return;
-  input.dataset.scanQtyInitialized = "true";
-  input.dataset.scanQtyBlank = "true";
-  input.value = "";
-}
-
-function isCheckedLocationRow(input: HTMLInputElement): boolean {
-  return Boolean(input.closest("article")?.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked);
-}
-
-function isProductRow(input: HTMLInputElement): boolean {
-  return Boolean(input.closest("article")) && !input.closest("article")?.querySelector<HTMLInputElement>('input[type="checkbox"]');
 }
 
 function setControlledInputValue(input: HTMLInputElement, value: string) {
@@ -197,7 +179,7 @@ function LocationFirstInboundProductAdder() {
         if (index >= 0) {
           next[index] = { ...next[index], currentQty };
         } else {
-          next.push({ product, qty: 1, currentQty });
+          next.push({ product, qty: "", currentQty });
         }
       }
       return next;
@@ -269,14 +251,20 @@ function LocationFirstInboundProductAdder() {
   }
 
   function changeQty(productId: string, raw: string) {
-    const parsed = Number(raw);
-    const qty = Number.isFinite(parsed) ? Math.max(1, Math.trunc(parsed)) : 1;
-    setDrafts((current) => current.map((item) => item.product.id === productId ? { ...item, qty } : item));
+    setDrafts((current) => current.map((item) =>
+      item.product.id === productId
+        ? { ...item, qty: parseIntegerDraft(raw, 1) }
+        : item,
+    ));
   }
 
   async function confirmAdd() {
     if (drafts.length === 0 || busy) return;
-    const totalQty = drafts.reduce((sum, item) => sum + item.qty, 0);
+    const totalQty = drafts.reduce((sum, item) => sum + numberOrZero(item.qty), 0);
+    if (drafts.some((item) => !isIntegerInputValue(item.qty, 1))) {
+      setFeedback({ kind: "error", title: "모든 상품의 입고 수량을 입력하세요." });
+      return;
+    }
     if (!window.confirm(
       `${locationCode}에 ${drafts.length} SKU / ${totalQty.toLocaleString()}개를 입고할까요?\n현재 LOC에 없던 상품도 신규 재고로 추가됩니다.`,
     )) return;
@@ -288,7 +276,7 @@ function LocationFirstInboundProductAdder() {
       const result = await postLocationInventoryBatch({
         operation: "IB",
         locationId: resolvedLocation.id,
-        items: drafts.map((item) => ({ productId: item.product.id, qty: item.qty })),
+        items: drafts.map((item) => ({ productId: item.product.id, qty: Number(item.qty) })),
         note: note.trim() || "LOC 우선 스캔 신규 상품 입고",
         idempotencyKey: createIdempotencyKey(),
       });
@@ -314,7 +302,8 @@ function LocationFirstInboundProductAdder() {
 
   if (!target || !enabled || !locationCode) return null;
 
-  const totalQty = drafts.reduce((sum, item) => sum + item.qty, 0);
+  const totalQty = drafts.reduce((sum, item) => sum + numberOrZero(item.qty), 0);
+  const qtyInvalid = drafts.some((item) => !isIntegerInputValue(item.qty, 1));
   const newSkuCount = drafts.filter((item) => item.currentQty === 0).length;
 
   return createPortal(
@@ -360,7 +349,7 @@ function LocationFirstInboundProductAdder() {
             <label>메모(선택)<input value={note} onChange={(event) => setNote(event.target.value)} placeholder="작업 사유 또는 메모" disabled={busy} /></label>
             <div className="resolved-card"><span>입고 예정</span><strong>{drafts.length} SKU / {totalQty.toLocaleString()}개</strong><small>신규 LOC 상품 {newSkuCount} SKU</small></div>
           </div>
-          <button className="button button-primary button-full" onClick={() => void confirmAdd()} disabled={busy || drafts.length === 0}>{busy ? "처리 중..." : `${drafts.length} SKU / ${totalQty.toLocaleString()}개 LOC 입고 확정`}</button>
+          <button className="button button-primary button-full" onClick={() => void confirmAdd()} disabled={busy || drafts.length === 0 || qtyInvalid}>{busy ? "처리 중..." : `${drafts.length} SKU / ${totalQty.toLocaleString()}개 LOC 입고 확정`}</button>
         </div>
       ) : null}
 
@@ -388,84 +377,10 @@ function LocationFirstInboundProductAdder() {
 
 export function ScanWorkflowV5() {
   useEffect(() => {
-    const handleChange = (event: Event) => {
-      const target = event.target;
-      if (!(target instanceof HTMLInputElement) || target.type !== "checkbox") return;
-      const qty = quantityInputFrom(target);
-      if (!target.checked) {
-        if (qty) {
-          delete qty.dataset.scanQtyBlank;
-          delete qty.dataset.scanQtyInitialized;
-        }
-        return;
-      }
-      window.setTimeout(() => markBlank(quantityInputFrom(target)), 0);
-    };
-
-    const handleInput = (event: Event) => {
-      const target = event.target;
-      if (!(target instanceof HTMLInputElement) || target.type !== "number") return;
-
-      if (target.value === "" && (isCheckedLocationRow(target) || isProductRow(target))) {
-        markBlank(target);
-        window.setTimeout(() => markBlank(quantityInputFrom(target)), 0);
-        return;
-      }
-
-      if (target.dataset.scanQtyBlank === "true" && target.value !== "") {
-        delete target.dataset.scanQtyBlank;
-      }
-    };
-
-    const handleClick = (event: MouseEvent) => {
-      const button = (event.target as Element | null)?.closest("button");
-      if (!button) return;
-      const label = button.textContent?.trim() ?? "";
-
-      if (label.includes("검색 결과 전체 선택")) {
-        window.setTimeout(() => {
-          document.querySelectorAll<HTMLInputElement>('article input[type="checkbox"]:checked').forEach((checkbox) => {
-            markBlank(quantityInputFrom(checkbox));
-          });
-        }, 0);
-        return;
-      }
-
-      const isConfirm = label === "선택 상품 입고"
-        || label === "선택 상품 출고"
-        || label.endsWith("입고 확정")
-        || label.endsWith("출고 확정");
-      if (!isConfirm) return;
-
-      const blanks = document.querySelectorAll<HTMLInputElement>('input[type="number"][data-scan-qty-blank="true"]');
-      if (blanks.length === 0) return;
-
-      event.preventDefault();
-      event.stopPropagation();
-      window.alert("선택한 상품의 수량을 모두 입력하세요.");
-      blanks[0]?.focus();
-    };
-
     const timer = window.setInterval(() => {
-      document.querySelectorAll<HTMLInputElement>('article input[type="number"]').forEach((input) => {
-        if (input.dataset.scanQtyInitialized !== "true" && (isProductRow(input) || isCheckedLocationRow(input))) {
-          markBlank(input);
-        }
-        if (input.dataset.scanQtyBlank === "true" && input.value !== "") input.value = "";
-      });
-
       document.querySelectorAll<HTMLLabelElement>("label").forEach(injectNotePreset);
-    }, 120);
-
-    document.addEventListener("change", handleChange);
-    document.addEventListener("input", handleInput);
-    document.addEventListener("click", handleClick, true);
-    return () => {
-      window.clearInterval(timer);
-      document.removeEventListener("change", handleChange);
-      document.removeEventListener("input", handleInput);
-      document.removeEventListener("click", handleClick, true);
-    };
+    }, 200);
+    return () => window.clearInterval(timer);
   }, []);
 
   return (
