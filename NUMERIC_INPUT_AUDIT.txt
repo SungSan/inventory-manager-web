@@ -55,3 +55,4 @@ src/components/scan-workflow-v3.tsx:279:      return { ...item, qty: Math.max(1,
 src/components/scan-workflow-v3.tsx:361:      ? Math.max(1, Math.min(max, Math.trunc(parsed)))
 
 # parseInt occurrences
+src/lib/number-input.ts:3:export function parseIntegerDraft(
