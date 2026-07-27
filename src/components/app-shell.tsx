@@ -16,17 +16,17 @@ import type { UserProfile } from "@/types/domain";
 
 const nav: Array<{ href: string; label: string; permission: Permission }> = [
   { href: "/", label: "대시보드", permission: "view_dashboard" },
-  { href: "/work-requests", label: "업무요청", permission: "work_requests" },
   { href: "/scan", label: "입고·출고", permission: "scan_inventory" },
-  { href: "/stocktakes", label: "재고실사", permission: "stocktake_inventory" },
   { href: "/inventory", label: "재고조회", permission: "view_inventory" },
-  { href: "/utilization", label: "용적률", permission: "view_inventory" },
-  { href: "/location-map", label: "로케이션맵", permission: "view_inventory" },
   { href: "/transfers", label: "재고이관", permission: "transfer_inventory" },
   { href: "/external-transfers", label: "외부이관", permission: "external_transfer" },
+  { href: "/work-requests", label: "업무요청", permission: "work_requests" },
   { href: "/products", label: "상품관리", permission: "manage_products" },
-  { href: "/locations", label: "로케이션", permission: "manage_locations" },
   { href: "/barcodes", label: "바코드", permission: "manage_barcodes" },
+  { href: "/locations", label: "로케이션", permission: "manage_locations" },
+  { href: "/location-map", label: "로케이션맵", permission: "view_inventory" },
+  { href: "/utilization", label: "용적률", permission: "view_inventory" },
+  { href: "/stocktakes", label: "재고실사", permission: "stocktake_inventory" },
   { href: "/logs", label: "로그", permission: "view_logs" },
   { href: "/import", label: "데이터이전", permission: "import_data" },
   { href: "/users", label: "사용자", permission: "manage_users" },
@@ -53,7 +53,7 @@ function ShellContent({ children }: { children: React.ReactNode }) {
       <WorkRequestRuleEnhancer />
       <NumericInputGuard />
       <header className="topbar">
-        <div><p className="eyebrow">SAN WMS · V4.3.0</p><h1>재고관리</h1></div>
+        <div><p className="eyebrow">SAN WMS · V4.3.1</p><h1>재고관리</h1></div>
         <div className="topbar-meta">
           <WorkRequestIndicator />
           <span className={`mode-badge ${isDemoMode() ? "demo" : "live"}`}>{isDemoMode() ? "DEMO" : "LIVE"}</span>
