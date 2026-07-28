@@ -59,7 +59,7 @@ function WorkRequestDetailContent(){
     setCandidateIds(next.candidates.map((item)=>item.userId));
   },[]);
   const load=useCallback(async()=>{try{apply(await getWorkRequest(params.id));setError("");}catch(cause){setError(cause instanceof Error?cause.message:"업무요청을 불러오지 못했습니다.");}},[apply,params.id]);
-  useEffect(()=>{void load();return subscribeToInventory(()=>void load());},[load]);
+  useEffect(()=>{void load();return subscribeToInventory(load,{scope:"workRequests",fallbackMs:60_000});},[load]);
 
   const totalQty=useMemo(()=>editItems.reduce((sum,item)=>sum+numberOrZero(item.qty),0),[editItems]);
   useEffect(()=>{if(!header.requestedShipDate)return;const timer=window.setTimeout(()=>void listWorkRequestAssignees(header.requestedShipDate,editItems.length,totalQty).then(setAssignees).catch(()=>undefined),150);return()=>window.clearTimeout(timer);},[header.requestedShipDate,editItems.length,totalQty]);

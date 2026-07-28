@@ -404,44 +404,166 @@ export async function importInventoryRows(rows: ImportInventoryRow[]): Promise<I
   return data as ImportResult;
 }
 
+export type RealtimeScope =
+  | "user"
+  | "dashboard"
+  | "inventory"
+  | "logs"
+  | "workRequests"
+  | "utilization"
+  | "users"
+  | "transfers"
+  | "products"
+  | "barcodes"
+  | "locations"
+  | "externalTransfers"
+  | "locationMap";
+
+const REALTIME_SCOPE_TABLES: Record<RealtimeScope, readonly string[]> = {
+  user: ["profiles"],
+  dashboard: ["inventory_balances", "inventory_transactions", "scan_events", "products", "locations"],
+  inventory: ["inventory_balances", "products", "locations", "barcodes"],
+  logs: ["inventory_transactions", "scan_events", "audit_logs"],
+  workRequests: [
+    "work_requests", "work_request_items", "work_request_candidates", "work_request_scans",
+    "work_request_events", "work_request_notifications", "work_request_change_requests",
+    "work_request_documents", "work_request_document_items", "work_request_document_allocations",
+    "worker_kpi_settings", "worker_kpi_overrides", "business_calendar",
+  ],
+  utilization: ["utilization_zones", "inventory_balances", "locations"],
+  users: ["profiles", "worker_kpi_settings", "worker_kpi_overrides", "terms_acceptances", "profile_name_history"],
+  transfers: ["transfer_jobs", "transfer_job_items", "inventory_balances"],
+  products: ["products", "barcodes", "scan_targets"],
+  barcodes: ["barcodes", "scan_targets", "products", "locations"],
+  locations: ["locations", "barcodes", "scan_targets", "inventory_balances"],
+  externalTransfers: [
+    "external_transfer_jobs", "external_transfer_items", "external_transfer_allocations",
+    "external_shipment_documents", "external_shipment_items", "external_shipment_allocations",
+    "inventory_balances",
+  ],
+  locationMap: [
+    "locations", "inventory_balances", "transfer_jobs", "transfer_job_items",
+    "inventory_cycle_settings", "inventory_cycle_item_profiles", "inventory_cycle_location_profiles",
+    "inventory_cycle_dirty_locations", "location_map_zone_settings",
+  ],
+};
+
+export interface RealtimeSubscriptionOptions {
+  scope?: RealtimeScope;
+  debounceMs?: number;
+  fallbackMs?: number;
+}
+
 let realtimeSubscriptionSequence = 0;
 
-export function subscribeToInventory(callback: () => void): () => void {
-  if (isDemoMode()) return demoSubscribe(callback);
-
-  const supabase = getSupabaseClient();
-  if (!supabase) return () => undefined;
-
-  // 여러 화면과 React 개발 모드가 동시에 구독해도 기존 채널과 충돌하지 않도록
-  // 구독 인스턴스마다 고유한 topic을 사용한다.
-  realtimeSubscriptionSequence += 1;
-  const channelName = [
-    "wms-live",
-    Date.now().toString(36),
-    realtimeSubscriptionSequence.toString(36),
-    Math.random().toString(36).slice(2, 8),
-  ].join("-");
-
-  const channel = supabase.channel(channelName);
-
-  channel.on(
-    "postgres_changes",
-    { event: "*", schema: "public" },
-    () => callback(),
-  );
-
-  channel.subscribe((status, error) => {
-    if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-      console.error("Supabase Realtime subscription failed:", status, error);
-    }
-  });
+export function subscribeToInventory(
+  callback: () => void | Promise<void>,
+  options: RealtimeSubscriptionOptions = {},
+): () => void {
+  const scope = options.scope ?? "inventory";
+  const debounceMs = Math.max(0, options.debounceMs ?? 250);
+  const fallbackMs = Math.max(0, options.fallbackMs ?? 0);
+  const tables = [...new Set(REALTIME_SCOPE_TABLES[scope])];
 
   let disposed = false;
+  let running = false;
+  let rerunRequested = false;
+  let hiddenDirty = false;
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let fallbackTimer: ReturnType<typeof setInterval> | null = null;
+
+  const isHidden = () => typeof document !== "undefined" && document.visibilityState === "hidden";
+
+  const execute = async () => {
+    if (disposed) return;
+    if (isHidden()) {
+      hiddenDirty = true;
+      return;
+    }
+    if (running) {
+      rerunRequested = true;
+      return;
+    }
+
+    running = true;
+    try {
+      do {
+        rerunRequested = false;
+        await callback();
+      } while (rerunRequested && !disposed && !isHidden());
+    } catch (error) {
+      console.error(`SAN WMS realtime refresh failed (${scope})`, error);
+    } finally {
+      running = false;
+    }
+  };
+
+  const schedule = (delay = debounceMs) => {
+    if (disposed) return;
+    if (isHidden()) {
+      hiddenDirty = true;
+      return;
+    }
+    if (running) {
+      rerunRequested = true;
+      return;
+    }
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null;
+      void execute();
+    }, delay);
+  };
+
+  const handleVisibility = () => {
+    if (!isHidden() && hiddenDirty) {
+      hiddenDirty = false;
+      schedule(0);
+    }
+  };
+
+  if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", handleVisibility);
+  }
+
+  let unsubscribeSource: () => void = () => undefined;
+
+  if (isDemoMode()) {
+    unsubscribeSource = demoSubscribe(() => schedule());
+  } else {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      realtimeSubscriptionSequence += 1;
+      const channelName = [
+        "wms-live", scope, Date.now().toString(36),
+        realtimeSubscriptionSequence.toString(36), Math.random().toString(36).slice(2, 8),
+      ].join("-");
+      const channel = supabase.channel(channelName);
+      for (const table of tables) {
+        channel.on("postgres_changes", { event: "*", schema: "public", table }, () => schedule());
+      }
+      channel.subscribe((status, error) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.error(`Supabase Realtime subscription failed (${scope})`, status, error);
+        }
+      });
+      unsubscribeSource = () => { void supabase.removeChannel(channel); };
+    }
+  }
+
+  if (fallbackMs > 0) {
+    fallbackTimer = setInterval(() => schedule(), fallbackMs);
+  }
 
   return () => {
     if (disposed) return;
     disposed = true;
-    void supabase.removeChannel(channel);
+    if (debounceTimer) clearTimeout(debounceTimer);
+    if (fallbackTimer) clearInterval(fallbackTimer);
+    if (typeof document !== "undefined") {
+      document.removeEventListener("visibilitychange", handleVisibility);
+    }
+    unsubscribeSource();
   };
 }
 

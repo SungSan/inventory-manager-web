@@ -24,9 +24,7 @@ export function WorkRequestIndicator() {
 
   useEffect(() => {
     void load();
-    const timer = window.setInterval(() => void load(), 60_000);
-    const unsubscribe = subscribeToInventory(() => void load());
-    return () => { window.clearInterval(timer); unsubscribe(); };
+    return subscribeToInventory(load, { scope: "workRequests", fallbackMs: 60_000 });
   }, [load]);
 
   const popup = useMemo(() => notifications.find((item) => !item.acknowledgedAt), [notifications]);

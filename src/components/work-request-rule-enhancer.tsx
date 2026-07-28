@@ -54,9 +54,10 @@ export function WorkRequestRuleEnhancer() {
       if (!error && typeof data === "string") earliestDate = data;
     };
 
-    void loadEarliestDate();
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let animationFrame: number | null = null;
 
-    const interval = window.setInterval(() => {
+    const apply = () => {
       if (cancelled) return;
       replaceNotice();
 
@@ -73,11 +74,34 @@ export function WorkRequestRuleEnhancer() {
       setControlledInputValue(input, earliestDate);
       retries += 1;
       if (retries >= 8) appliedRef.current = true;
-    }, 250);
+    };
+
+    const scheduleApply = () => {
+      if (cancelled || animationFrame !== null) return;
+      animationFrame = window.requestAnimationFrame(() => {
+        animationFrame = null;
+        apply();
+      });
+    };
+
+    const retry = () => {
+      if (cancelled || appliedRef.current || retries >= 12) return;
+      scheduleApply();
+      retries += 1;
+      retryTimer = setTimeout(retry, 250);
+    };
+
+    void loadEarliestDate().finally(scheduleApply);
+    scheduleApply();
+    retryTimer = setTimeout(retry, 250);
+    const observer = new MutationObserver(scheduleApply);
+    observer.observe(document.body, { childList: true, subtree: true });
 
     return () => {
       cancelled = true;
-      window.clearInterval(interval);
+      observer.disconnect();
+      if (retryTimer) clearTimeout(retryTimer);
+      if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
     };
   }, [pathname]);
 

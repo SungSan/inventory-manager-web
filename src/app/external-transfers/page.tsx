@@ -70,7 +70,7 @@ function ExternalTransfersContent() {
 
   useEffect(() => {
     void loadJobs();
-    return subscribeToInventory(() => void loadJobs());
+    return subscribeToInventory(loadJobs, { scope: "externalTransfers", fallbackMs: 60_000 });
   }, [loadJobs]);
 
   useEffect(() => {

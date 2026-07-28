@@ -47,11 +47,10 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       });
 
     // 백그라운드 데이터 변경은 권한 화면을 내리지 않고 조용히 반영한다.
-    const unsubscribe = subscribeToInventory(() => {
-      void getCurrentUser().then((nextUser) => {
-        if (active) setUser(nextUser);
-      });
-    });
+    const unsubscribe = subscribeToInventory(async () => {
+      const nextUser = await getCurrentUser();
+      if (active) setUser(nextUser);
+    }, { scope: "user", fallbackMs: 120_000 });
 
     return () => {
       active = false;

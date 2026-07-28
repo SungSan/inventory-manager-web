@@ -61,7 +61,7 @@ function WorkRequestsContent() {
     finally{setLoading(false);}
   },[tab]);
 
-  useEffect(()=>{void loadRequests();return subscribeToInventory(()=>void loadRequests());},[loadRequests]);
+  useEffect(()=>{void loadRequests();return subscribeToInventory(loadRequests,{scope:"workRequests",fallbackMs:60_000});},[loadRequests]);
 
   useEffect(()=>{
     const prepare=async()=>{

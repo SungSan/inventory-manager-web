@@ -27,7 +27,7 @@ function UsersContent() {
   const [busyId, setBusyId] = useState("");
   const [feedback, setFeedback] = useState<{ kind: FeedbackKind; title: string; body?: string } | null>(null);
   const load = useCallback(async () => setUsers(await listAdminUserSecurityStatus()), []);
-  useEffect(() => { void load(); return subscribeToInventory(() => void load()); }, [load]);
+  useEffect(() => { void load(); return subscribeToInventory(load, { scope: "users", fallbackMs: 60_000 }); }, [load]);
 
   const visibleUsers = useMemo(
     () => users.filter((user) => showDeleted || !user.deletedAt),

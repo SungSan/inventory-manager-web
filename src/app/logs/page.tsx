@@ -29,7 +29,7 @@ function LogsContent() {
   }, [operation, scanResult, search, tab]);
 
   useEffect(() => { const timer = window.setTimeout(() => void load(), 150); return () => window.clearTimeout(timer); }, [load]);
-  useEffect(() => subscribeToInventory(() => void load()), [load]);
+  useEffect(() => subscribeToInventory(load, { scope: "logs", fallbackMs: 120_000 }), [load]);
 
   async function reverse(tx: InventoryTransaction) {
     const reason = window.prompt("취소 사유를 입력하세요.", "잘못 처리된 입출고 취소");

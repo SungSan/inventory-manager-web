@@ -40,7 +40,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     void load();
-    return subscribeToInventory(() => void load());
+    return subscribeToInventory(load, { scope: "dashboard", fallbackMs: 60_000 });
   }, [load]);
 
   const metrics = useMemo(() => ({

@@ -18,7 +18,7 @@ function LocationsContent() {
 
   const load = useCallback(async () => setRows(await listLocations(search, true)), [search]);
   useEffect(() => { const timer = window.setTimeout(() => void load(), 150); return () => window.clearTimeout(timer); }, [load]);
-  useEffect(() => subscribeToInventory(() => void load()), [load]);
+  useEffect(() => subscribeToInventory(load, { scope: "locations", fallbackMs: 120_000 }), [load]);
 
   function startEdit(location: Location) {
     setEditingId(location.id);

@@ -112,7 +112,7 @@ function InventoryContent() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => subscribeToInventory(() => void load()), [load]);
+  useEffect(() => subscribeToInventory(load, { scope: "inventory", fallbackMs: 60_000 }), [load]);
 
   const sharedBarcodeCount = useMemo(() => {
     const map = new Map<string, Set<string>>();

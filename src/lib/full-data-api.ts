@@ -3,8 +3,9 @@ import { listInventory } from "@/lib/inventory-api";
 import type { InventoryRow } from "@/types/domain";
 
 const PAGE_SIZE = 1000;
+let inventoryLoadInFlight: Promise<InventoryRow[]> | null = null;
 
-export async function listAllInventoryRows(): Promise<InventoryRow[]> {
+async function loadAllInventoryRows(): Promise<InventoryRow[]> {
   if (isDemoMode()) return listInventory("");
 
   const supabase = getSupabaseClient();
@@ -43,4 +44,15 @@ export async function listAllInventoryRows(): Promise<InventoryRow[]> {
   }
 
   return result;
+}
+
+export async function listAllInventoryRows(): Promise<InventoryRow[]> {
+  if (inventoryLoadInFlight) return inventoryLoadInFlight;
+
+  inventoryLoadInFlight = loadAllInventoryRows();
+  try {
+    return await inventoryLoadInFlight;
+  } finally {
+    inventoryLoadInFlight = null;
+  }
 }
