@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CameraScanner } from "@/components/camera-scanner";
-import { listLocations } from "@/lib/inventory-api";
+import { resolveBarcodeCandidates } from "@/lib/inventory-api";
 import {
   containsHangul,
   isValidLocationBarcodeFormat,
@@ -17,6 +17,12 @@ function inferBarcodeInputKind(label: string, placeholder: string): BarcodeInput
   const hasProduct = /상품|SKU/i.test(hint);
   if (hasLocation && hasProduct) return "mixed";
   return hasLocation ? "location" : "generic";
+}
+
+function isResolvedLocationMatch(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const match = value as { target?: { type?: string; location?: unknown } };
+  return match.target?.type === "location" && Boolean(match.target.location);
 }
 
 export function BarcodeField({
@@ -64,11 +70,14 @@ export function BarcodeField({
       const locationCandidate = normalizeLocationBarcodeInput(raw);
       if (isValidLocationBarcodeFormat(locationCandidate)) {
         try {
-          const locations = await listLocations(locationCandidate, false);
-          const exists = locations.some(
-            (location) => normalizeLocationBarcodeInput(location.locationCode) === locationCandidate,
+          // 혼합 입력창은 locations 테이블의 코드 검색이 아니라 실제 바코드 판별 RPC로 검증합니다.
+          // 등록된 LOC 바코드 또는 LOC 코드로 확인된 경우에만 변환값을 사용합니다.
+          const matches = await resolveBarcodeCandidates(
+            locationCandidate,
+            "location",
+            "MIXED_LOCATION_PRECHECK",
           );
-          if (exists) return locationCandidate;
+          if (matches.some(isResolvedLocationMatch)) return locationCandidate;
         } catch {
           // LOC 후보 확인이 실패하면 상품 바코드 원문 처리 흐름을 유지합니다.
         }
