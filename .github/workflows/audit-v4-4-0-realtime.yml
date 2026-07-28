@@ -14,11 +14,18 @@ jobs:
       - uses: actions/checkout@v4
       - name: Find realtime subscriptions
         run: |
-          echo '=== subscribeToInventory usages ==='
-          grep -RIn --exclude-dir=node_modules --exclude='*.map' 'subscribeToInventory' src || true
-          echo '=== postgres_changes usages ==='
-          grep -RIn --exclude-dir=node_modules --exclude='*.map' 'postgres_changes' src || true
-          echo '=== setInterval usages ==='
-          grep -RIn --exclude-dir=node_modules --exclude='*.map' 'setInterval' src || true
-          echo '=== full inventory loads ==='
-          grep -RIn --exclude-dir=node_modules --exclude='*.map' 'listAllInventoryRows' src || true
+          {
+            echo '=== subscribeToInventory usages ==='
+            grep -RIn --exclude-dir=node_modules --exclude='*.map' 'subscribeToInventory' src || true
+            echo '=== postgres_changes usages ==='
+            grep -RIn --exclude-dir=node_modules --exclude='*.map' 'postgres_changes' src || true
+            echo '=== setInterval usages ==='
+            grep -RIn --exclude-dir=node_modules --exclude='*.map' 'setInterval' src || true
+            echo '=== full inventory loads ==='
+            grep -RIn --exclude-dir=node_modules --exclude='*.map' 'listAllInventoryRows' src || true
+          } > realtime-audit.txt
+          cat realtime-audit.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: realtime-audit
+          path: realtime-audit.txt
