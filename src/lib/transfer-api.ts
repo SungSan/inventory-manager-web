@@ -1,3 +1,4 @@
+import { normalizeLocationBarcodeInput } from "@/lib/location-barcode";
 import { getSupabaseClient, isDemoMode } from "@/lib/supabase";
 import type {
   TransferItemInput,
@@ -106,7 +107,7 @@ export async function getTransferJob(jobId: string): Promise<TransferJobDetail> 
 export async function createTransferJob(sourceBarcode: string, note = ""): Promise<TransferJobDetail> {
   ensureLiveMode();
   const { data, error } = await client().rpc("create_transfer_job", {
-    p_source_barcode: sourceBarcode,
+    p_source_barcode: normalizeLocationBarcodeInput(sourceBarcode),
     p_note: note || null,
   });
   if (error) throw new Error(error.message);
@@ -133,7 +134,7 @@ export async function setTransferDestination(
   ensureLiveMode();
   const { data, error } = await client().rpc("set_transfer_destination", {
     p_job_id: jobId,
-    p_destination_barcode: destinationBarcode,
+    p_destination_barcode: normalizeLocationBarcodeInput(destinationBarcode),
   });
   if (error) throw new Error(error.message);
   return mapTransferJobDetail(data);
