@@ -67,7 +67,7 @@ function UtilizationContent() {
 
   useEffect(() => {
     void load();
-    return subscribeToInventory(() => void load());
+    return subscribeToInventory(load, { scope: "utilization", fallbackMs: 60_000 });
   }, [load]);
 
   const activeRows = useMemo(() => rows.filter((row) => row.active), [rows]);

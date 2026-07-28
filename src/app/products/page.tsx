@@ -32,7 +32,7 @@ function ProductsContent() {
     if (barcode) setForm((value) => ({ ...value, primaryBarcode: barcode }));
   }, [searchParams]);
   useEffect(() => { const timer = window.setTimeout(() => void load(), 150); return () => window.clearTimeout(timer); }, [load]);
-  useEffect(() => subscribeToInventory(() => void load()), [load]);
+  useEffect(() => subscribeToInventory(load, { scope: "products", fallbackMs: 120_000 }), [load]);
 
   function startEdit(product: Product) {
     setEditingId(product.id);

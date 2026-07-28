@@ -38,7 +38,7 @@ function TransferListContent() {
 
   useEffect(() => {
     void load();
-    return subscribeToInventory(() => void load());
+    return subscribeToInventory(load, { scope: "transfers", fallbackMs: 60_000 });
   }, [load]);
 
   async function startTransfer(sourceBarcode: string): Promise<boolean> {

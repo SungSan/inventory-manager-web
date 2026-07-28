@@ -43,7 +43,7 @@ function BarcodesContent() {
   }, [search, targetType]);
 
   useEffect(() => { const timer = window.setTimeout(() => void load(), 150); return () => window.clearTimeout(timer); }, [load]);
-  useEffect(() => subscribeToInventory(() => void load()), [load]);
+  useEffect(() => subscribeToInventory(load, { scope: "barcodes", fallbackMs: 120_000 }), [load]);
 
   async function save() {
     if (!selectedId || !barcodeValue.trim()) return;

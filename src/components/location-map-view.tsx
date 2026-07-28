@@ -101,7 +101,7 @@ export function LocationMapView() {
 
   useEffect(() => {
     void load();
-    return subscribeToInventory(() => void load());
+    return subscribeToInventory(load, { scope: "locationMap", fallbackMs: 60_000 });
   }, [load]);
 
   useEffect(() => {

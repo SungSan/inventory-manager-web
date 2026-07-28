@@ -3,8 +3,13 @@ import { listInventory } from "@/lib/inventory-api";
 import type { InventoryRow } from "@/types/domain";
 
 const PAGE_SIZE = 1000;
+const RESULT_REUSE_MS = 750;
+let inventoryLoadInFlight: Promise<InventoryRow[]> | null = null;
+let cachedInventoryRows: InventoryRow[] = [];
+let cachedInventoryAt = 0;
+let hasInventoryCache = false;
 
-export async function listAllInventoryRows(): Promise<InventoryRow[]> {
+async function loadAllInventoryRows(): Promise<InventoryRow[]> {
   if (isDemoMode()) return listInventory("");
 
   const supabase = getSupabaseClient();
@@ -43,4 +48,21 @@ export async function listAllInventoryRows(): Promise<InventoryRow[]> {
   }
 
   return result;
+}
+
+export async function listAllInventoryRows(): Promise<InventoryRow[]> {
+  const now = Date.now();
+  if (inventoryLoadInFlight) return inventoryLoadInFlight;
+  if (hasInventoryCache && now - cachedInventoryAt < RESULT_REUSE_MS) return cachedInventoryRows;
+
+  inventoryLoadInFlight = loadAllInventoryRows();
+  try {
+    const rows = await inventoryLoadInFlight;
+    cachedInventoryRows = rows;
+    cachedInventoryAt = Date.now();
+    hasInventoryCache = true;
+    return rows;
+  } finally {
+    inventoryLoadInFlight = null;
+  }
 }

@@ -377,10 +377,21 @@ function LocationFirstInboundProductAdder() {
 
 export function ScanWorkflowV5() {
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      document.querySelectorAll<HTMLLabelElement>("label").forEach(injectNotePreset);
-    }, 200);
-    return () => window.clearInterval(timer);
+    const applyTo = (root: ParentNode) => {
+      if (root instanceof HTMLLabelElement) injectNotePreset(root);
+      root.querySelectorAll<HTMLLabelElement>("label").forEach(injectNotePreset);
+    };
+
+    applyTo(document);
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (node instanceof HTMLElement) applyTo(node);
+        }
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
   }, []);
 
   return (
