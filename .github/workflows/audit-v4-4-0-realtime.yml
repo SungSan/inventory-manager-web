@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Find realtime subscriptions
+      - name: Find realtime subscriptions and database tables
         run: |
           {
             echo '=== subscribeToInventory usages ==='
@@ -23,6 +23,10 @@ jobs:
             grep -RIn --exclude-dir=node_modules --exclude='*.map' 'setInterval' src || true
             echo '=== full inventory loads ==='
             grep -RIn --exclude-dir=node_modules --exclude='*.map' 'listAllInventoryRows' src || true
+            echo '=== database tables declared in migrations ==='
+            grep -RInE 'create table( if not exists)? public\.' supabase || true
+            echo '=== direct table reads in src ==='
+            grep -RInE '\.from\("[a-zA-Z0-9_]+"\)' src || true
           } > realtime-audit.txt
           cat realtime-audit.txt
       - uses: actions/upload-artifact@v4
