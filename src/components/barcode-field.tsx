@@ -81,17 +81,17 @@ export function BarcodeField({
   const submit = useCallback(
     async (raw: string) => {
       if (disabled || submittingRef.current) return;
-
-      const next = await finalValue(raw);
-      if (!next) return;
-
-      const now = Date.now();
-      if (lastSubmissionRef.current.value === next && now - lastSubmissionRef.current.at < 350) return;
-      lastSubmissionRef.current = { value: next, at: now };
       submittingRef.current = true;
-      setDraft(next);
 
       try {
+        const next = await finalValue(raw);
+        if (!next) return;
+
+        const now = Date.now();
+        if (lastSubmissionRef.current.value === next && now - lastSubmissionRef.current.at < 350) return;
+        lastSubmissionRef.current = { value: next, at: now };
+        setDraft(next);
+
         const accepted = await onSubmit(next);
         if (accepted !== false) {
           setDraft(value === undefined ? "" : next);
