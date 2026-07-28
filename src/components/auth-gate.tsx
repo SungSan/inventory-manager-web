@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getSupabaseClient, isDemoMode } from "@/lib/supabase";
+import { desktopActivityStorageKey } from "@/lib/session-guard-api";
 import { UserProvider } from "@/components/user-provider";
 import { IdentityConsentGate } from "@/components/identity-consent-gate";
+import { DesktopSessionGuard } from "@/components/desktop-session-guard";
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -45,8 +47,14 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             setMessage("");
             const supabase = getSupabaseClient();
             if (!supabase) return;
-            const { error } = await supabase.auth.signInWithPassword({ email, password });
-            if (error) setMessage(error.message);
+            const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+            if (error) {
+              setMessage(error.message);
+              return;
+            }
+            if (data.user) {
+              localStorage.setItem(desktopActivityStorageKey(data.user.id), String(Date.now()));
+            }
           }}
         >
           <p className="eyebrow">SAN WMS</p>
@@ -62,7 +70,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   return (
     <IdentityConsentGate>
-      <UserProvider>{children}</UserProvider>
+      <DesktopSessionGuard userId={session.user.id}>
+        <UserProvider>{children}</UserProvider>
+      </DesktopSessionGuard>
     </IdentityConsentGate>
   );
 }
