@@ -4,9 +4,21 @@ import { useCallback, useEffect, useState } from "react";
 import { Feedback, type FeedbackKind } from "@/components/feedback";
 import { PermissionGuard } from "@/components/permission-guard";
 import { createLocation, listLocations, subscribeToInventory, updateLocation } from "@/lib/inventory-api";
+import {
+  containsHangul,
+  isValidLocationBarcodeFormat,
+  normalizeLocationBarcodeInput,
+} from "@/lib/location-barcode";
 import type { Location, LocationInput } from "@/types/domain";
 
 const emptyForm: LocationInput = { locationCode: "", zone: "", barcodeValue: "" };
+
+function normalizeStandardLocationOrKeep(value: string): string {
+  const candidate = normalizeLocationBarcodeInput(value);
+  return containsHangul(value) || isValidLocationBarcodeFormat(candidate)
+    ? candidate
+    : value.trim().toUpperCase();
+}
 
 function LocationsContent() {
   const [rows, setRows] = useState<Location[]>([]);
@@ -16,7 +28,10 @@ function LocationsContent() {
   const [feedback, setFeedback] = useState<{ kind: FeedbackKind; title: string; body?: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const load = useCallback(async () => setRows(await listLocations(search, true)), [search]);
+  const load = useCallback(async () => {
+    const locationSearch = containsHangul(search) ? normalizeStandardLocationOrKeep(search) : search;
+    setRows(await listLocations(locationSearch, true));
+  }, [search]);
   useEffect(() => { const timer = window.setTimeout(() => void load(), 150); return () => window.clearTimeout(timer); }, [load]);
   useEffect(() => subscribeToInventory(load, { scope: "locations", fallbackMs: 120_000 }), [load]);
 
@@ -28,13 +43,20 @@ function LocationsContent() {
 
   async function save() {
     setBusy(true); setFeedback(null);
+    const normalizedForm: LocationInput = {
+      ...form,
+      locationCode: normalizeStandardLocationOrKeep(form.locationCode),
+      barcodeValue: form.barcodeValue
+        ? normalizeStandardLocationOrKeep(form.barcodeValue)
+        : "",
+    };
     try {
       if (editingId) {
-        await updateLocation(editingId, { locationCode: form.locationCode, zone: form.zone });
+        await updateLocation(editingId, { locationCode: normalizedForm.locationCode, zone: normalizedForm.zone });
         setFeedback({ kind: "success", title: "로케이션 수정 완료" });
       } else {
-        await createLocation(form);
-        setFeedback({ kind: "success", title: "로케이션 등록 완료", body: form.locationCode.toUpperCase() });
+        await createLocation(normalizedForm);
+        setFeedback({ kind: "success", title: "로케이션 등록 완료", body: normalizedForm.locationCode });
       }
       setForm(emptyForm); setEditingId(null); await load();
     } catch (cause) {
@@ -45,12 +67,12 @@ function LocationsContent() {
   return <div className="page-stack">
     <section><p className="eyebrow">LOCATION MASTER</p><h2>로케이션 관리</h2><p className="muted">로케이션 코드 자체를 기본 바코드로 사용하거나 별도의 지정 번호를 연결할 수 있습니다.</p></section>
     <section className="panel"><div className="section-heading"><h3>{editingId ? "로케이션 수정" : "신규 로케이션 등록"}</h3>{editingId ? <button className="button button-secondary button-compact" onClick={() => { setEditingId(null); setForm(emptyForm); }}>수정 취소</button> : null}</div>
-      <div className="form-grid"><label>로케이션 코드 *<input value={form.locationCode} onChange={(e) => setForm({ ...form, locationCode: e.target.value.toUpperCase() })} placeholder="D1A-01-02-03" /></label><label>구역<input value={form.zone} onChange={(e) => setForm({ ...form, zone: e.target.value.toUpperCase() })} placeholder="D1A" /></label>
-      {!editingId ? <label className="span-two">로케이션 바코드 번호<input value={form.barcodeValue ?? ""} onChange={(e) => setForm({ ...form, barcodeValue: e.target.value })} placeholder="비워두면 로케이션 코드를 사용" /></label> : null}
+      <div className="form-grid"><label>로케이션 코드 *<input value={form.locationCode} onChange={(e) => setForm({ ...form, locationCode: e.target.value.toUpperCase() })} onCompositionEnd={(e) => setForm((current) => ({ ...current, locationCode: normalizeStandardLocationOrKeep(e.currentTarget.value) }))} onBlur={(e) => setForm((current) => ({ ...current, locationCode: normalizeStandardLocationOrKeep(e.currentTarget.value) }))} placeholder="D1A-01-02-03" /></label><label>구역<input value={form.zone} onChange={(e) => setForm({ ...form, zone: e.target.value.toUpperCase() })} placeholder="D1A" /></label>
+      {!editingId ? <label className="span-two">로케이션 바코드 번호<input value={form.barcodeValue ?? ""} onChange={(e) => setForm({ ...form, barcodeValue: e.target.value })} onCompositionEnd={(e) => setForm((current) => ({ ...current, barcodeValue: normalizeStandardLocationOrKeep(e.currentTarget.value) }))} onBlur={(e) => setForm((current) => ({ ...current, barcodeValue: normalizeStandardLocationOrKeep(e.currentTarget.value) }))} placeholder="비워두면 로케이션 코드를 사용" /></label> : null}
       <button className="button button-primary span-two" disabled={busy || !form.locationCode.trim()} onClick={() => void save()}>{busy ? "저장 중..." : editingId ? "수정 저장" : "로케이션 등록"}</button></div>
     </section>
     {feedback ? <Feedback kind={feedback.kind} title={feedback.title}>{feedback.body}</Feedback> : null}
-    <section className="panel"><div className="section-heading"><h3>등록 로케이션</h3><label className="compact-search">검색<input value={search} onChange={(e) => setSearch(e.target.value)} /></label></div><div className="table-wrap"><table><thead><tr><th>상태</th><th>로케이션</th><th>구역</th><th>관리</th></tr></thead><tbody>{rows.map((location) => <tr key={location.id}><td><span className={`status-badge ${location.active ? "active" : "inactive"}`}>{location.active ? "사용" : "중지"}</span></td><td><strong>{location.locationCode}</strong></td><td>{location.zone}</td><td><div className="row-actions"><button className="button button-secondary button-compact" onClick={() => startEdit(location)}>수정</button><button className="button button-ghost button-compact" onClick={() => void updateLocation(location.id, { active: !location.active }).then(load)}>{location.active ? "비활성화" : "활성화"}</button></div></td></tr>)}</tbody></table></div>{rows.length === 0 ? <p className="empty-state">등록된 로케이션이 없습니다.</p> : null}</section>
+    <section className="panel"><div className="section-heading"><h3>등록 로케이션</h3><label className="compact-search">검색<input value={search} onChange={(e) => setSearch(e.target.value)} onCompositionEnd={(e) => setSearch(normalizeStandardLocationOrKeep(e.currentTarget.value))} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) setSearch(normalizeStandardLocationOrKeep(e.currentTarget.value)); }} /></label></div><div className="table-wrap"><table><thead><tr><th>상태</th><th>로케이션</th><th>구역</th><th>관리</th></tr></thead><tbody>{rows.map((location) => <tr key={location.id}><td><span className={`status-badge ${location.active ? "active" : "inactive"}`}>{location.active ? "사용" : "중지"}</span></td><td><strong>{location.locationCode}</strong></td><td>{location.zone}</td><td><div className="row-actions"><button className="button button-secondary button-compact" onClick={() => startEdit(location)}>수정</button><button className="button button-ghost button-compact" onClick={() => void updateLocation(location.id, { active: !location.active }).then(load)}>{location.active ? "비활성화" : "활성화"}</button></div></td></tr>)}</tbody></table></div>{rows.length === 0 ? <p className="empty-state">등록된 로케이션이 없습니다.</p> : null}</section>
   </div>;
 }
 
