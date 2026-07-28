@@ -1,4 +1,4 @@
-name: Audit V4.4.0 realtime usage
+name: Apply and validate V4.4.0 performance fix
 
 on:
   push:
@@ -6,30 +6,367 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
-  audit:
-    if: github.head_ref == 'fix/v4-4-0-realtime-performance' || github.ref_name == 'fix/v4-4-0-realtime-performance'
+  apply:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Find realtime subscriptions and database tables
-        run: |
-          {
-            echo '=== subscribeToInventory usages ==='
-            grep -RIn --exclude-dir=node_modules --exclude='*.map' 'subscribeToInventory' src || true
-            echo '=== postgres_changes usages ==='
-            grep -RIn --exclude-dir=node_modules --exclude='*.map' 'postgres_changes' src || true
-            echo '=== setInterval usages ==='
-            grep -RIn --exclude-dir=node_modules --exclude='*.map' 'setInterval' src || true
-            echo '=== full inventory loads ==='
-            grep -RIn --exclude-dir=node_modules --exclude='*.map' 'listAllInventoryRows' src || true
-            echo '=== database tables declared in migrations ==='
-            grep -RInE 'create table( if not exists)? public\.' supabase || true
-            echo '=== direct table reads in src ==='
-            grep -RInE '\.from\("[a-zA-Z0-9_]+"\)' src || true
-          } > realtime-audit.txt
-          cat realtime-audit.txt
-      - uses: actions/upload-artifact@v4
         with:
-          name: realtime-audit
-          path: realtime-audit.txt
+          ref: fix/v4-4-0-realtime-performance
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Apply performance patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_one(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              if old not in text:
+                  if new in text:
+                      return
+                  raise SystemExit(f"replacement not found: {path}: {old[:100]!r}")
+              file.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          api = Path("src/lib/inventory-api.ts")
+          text = api.read_text(encoding="utf-8")
+          start_marker = "let realtimeSubscriptionSequence = 0;"
+          end_marker = "\nexport function resetDemo(): void {"
+          if "export type RealtimeScope =" not in text:
+              start = text.index(start_marker)
+              end = text.index(end_marker, start)
+              block = r'''export type RealtimeScope =
+            | "user"
+            | "dashboard"
+            | "inventory"
+            | "logs"
+            | "workRequests"
+            | "utilization"
+            | "users"
+            | "transfers"
+            | "products"
+            | "barcodes"
+            | "locations"
+            | "externalTransfers"
+            | "locationMap";
+
+          const REALTIME_SCOPE_TABLES: Record<RealtimeScope, readonly string[]> = {
+            user: ["profiles"],
+            dashboard: ["inventory_balances", "inventory_transactions", "scan_events", "products", "locations"],
+            inventory: ["inventory_balances", "products", "locations", "barcodes"],
+            logs: ["inventory_transactions", "scan_events", "audit_logs"],
+            workRequests: [
+              "work_requests", "work_request_items", "work_request_candidates", "work_request_scans",
+              "work_request_events", "work_request_notifications", "work_request_change_requests",
+              "work_request_documents", "work_request_document_items", "work_request_document_allocations",
+              "worker_kpi_settings", "worker_kpi_overrides", "business_calendar",
+            ],
+            utilization: ["utilization_zones", "inventory_balances", "locations"],
+            users: ["profiles", "worker_kpi_settings", "worker_kpi_overrides", "terms_acceptances", "profile_name_history"],
+            transfers: ["transfer_jobs", "transfer_job_items", "inventory_balances"],
+            products: ["products", "barcodes", "scan_targets"],
+            barcodes: ["barcodes", "scan_targets", "products", "locations"],
+            locations: ["locations", "barcodes", "scan_targets", "inventory_balances"],
+            externalTransfers: [
+              "external_transfer_jobs", "external_transfer_items", "external_transfer_allocations",
+              "external_shipment_documents", "external_shipment_items", "external_shipment_allocations",
+              "inventory_balances",
+            ],
+            locationMap: [
+              "locations", "inventory_balances", "transfer_jobs", "transfer_job_items",
+              "inventory_cycle_settings", "inventory_cycle_item_profiles", "inventory_cycle_location_profiles",
+              "inventory_cycle_dirty_locations", "location_map_zone_settings",
+            ],
+          };
+
+          export interface RealtimeSubscriptionOptions {
+            scope?: RealtimeScope;
+            debounceMs?: number;
+            fallbackMs?: number;
+          }
+
+          let realtimeSubscriptionSequence = 0;
+
+          export function subscribeToInventory(
+            callback: () => void | Promise<void>,
+            options: RealtimeSubscriptionOptions = {},
+          ): () => void {
+            const scope = options.scope ?? "inventory";
+            const debounceMs = Math.max(0, options.debounceMs ?? 250);
+            const fallbackMs = Math.max(0, options.fallbackMs ?? 0);
+            const tables = [...new Set(REALTIME_SCOPE_TABLES[scope])];
+
+            let disposed = false;
+            let running = false;
+            let rerunRequested = false;
+            let hiddenDirty = false;
+            let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+            let fallbackTimer: ReturnType<typeof setInterval> | null = null;
+
+            const isHidden = () => typeof document !== "undefined" && document.visibilityState === "hidden";
+
+            const execute = async () => {
+              if (disposed) return;
+              if (isHidden()) {
+                hiddenDirty = true;
+                return;
+              }
+              if (running) {
+                rerunRequested = true;
+                return;
+              }
+
+              running = true;
+              try {
+                do {
+                  rerunRequested = false;
+                  await callback();
+                } while (rerunRequested && !disposed && !isHidden());
+              } catch (error) {
+                console.error(`SAN WMS realtime refresh failed (${scope})`, error);
+              } finally {
+                running = false;
+              }
+            };
+
+            const schedule = (delay = debounceMs) => {
+              if (disposed) return;
+              if (isHidden()) {
+                hiddenDirty = true;
+                return;
+              }
+              if (running) {
+                rerunRequested = true;
+                return;
+              }
+              if (debounceTimer) clearTimeout(debounceTimer);
+              debounceTimer = setTimeout(() => {
+                debounceTimer = null;
+                void execute();
+              }, delay);
+            };
+
+            const handleVisibility = () => {
+              if (!isHidden() && hiddenDirty) {
+                hiddenDirty = false;
+                schedule(0);
+              }
+            };
+
+            if (typeof document !== "undefined") {
+              document.addEventListener("visibilitychange", handleVisibility);
+            }
+
+            let unsubscribeSource = () => undefined;
+
+            if (isDemoMode()) {
+              unsubscribeSource = demoSubscribe(() => schedule());
+            } else {
+              const supabase = getSupabaseClient();
+              if (supabase) {
+                realtimeSubscriptionSequence += 1;
+                const channelName = [
+                  "wms-live", scope, Date.now().toString(36),
+                  realtimeSubscriptionSequence.toString(36), Math.random().toString(36).slice(2, 8),
+                ].join("-");
+                const channel = supabase.channel(channelName);
+                for (const table of tables) {
+                  channel.on("postgres_changes", { event: "*", schema: "public", table }, () => schedule());
+                }
+                channel.subscribe((status, error) => {
+                  if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+                    console.error(`Supabase Realtime subscription failed (${scope})`, status, error);
+                  }
+                });
+                unsubscribeSource = () => { void supabase.removeChannel(channel); };
+              }
+            }
+
+            if (fallbackMs > 0) {
+              fallbackTimer = setInterval(() => schedule(), fallbackMs);
+            }
+
+            return () => {
+              if (disposed) return;
+              disposed = true;
+              if (debounceTimer) clearTimeout(debounceTimer);
+              if (fallbackTimer) clearInterval(fallbackTimer);
+              if (typeof document !== "undefined") {
+                document.removeEventListener("visibilitychange", handleVisibility);
+              }
+              unsubscribeSource();
+            };
+          }
+          '''
+              text = text[:start] + block + text[end:]
+              api.write_text(text, encoding="utf-8")
+
+          replacements = {
+            "src/app/work-requests/[id]/page.tsx": [
+              ("useEffect(()=>{void load();return subscribeToInventory(()=>void load());},[load]);",
+               "useEffect(()=>{void load();return subscribeToInventory(load,{scope:\"workRequests\",fallbackMs:60_000});},[load]);"),
+            ],
+            "src/app/work-requests/page.tsx": [
+              ("useEffect(()=>{void loadRequests();return subscribeToInventory(()=>void loadRequests());},[loadRequests]);",
+               "useEffect(()=>{void loadRequests();return subscribeToInventory(loadRequests,{scope:\"workRequests\",fallbackMs:60_000});},[loadRequests]);"),
+            ],
+            "src/app/logs/page.tsx": [
+              ("useEffect(() => subscribeToInventory(() => void load()), [load]);",
+               "useEffect(() => subscribeToInventory(load, { scope: \"logs\", fallbackMs: 120_000 }), [load]);"),
+            ],
+            "src/app/inventory/page.tsx": [
+              ("useEffect(() => subscribeToInventory(() => void load()), [load]);",
+               "useEffect(() => subscribeToInventory(load, { scope: \"inventory\", fallbackMs: 60_000 }), [load]);"),
+            ],
+            "src/app/utilization/page.tsx": [
+              ("return subscribeToInventory(() => void load());",
+               "return subscribeToInventory(load, { scope: \"utilization\", fallbackMs: 60_000 });"),
+            ],
+            "src/app/users/page.tsx": [
+              ("useEffect(() => { void load(); return subscribeToInventory(() => void load()); }, [load]);",
+               "useEffect(() => { void load(); return subscribeToInventory(load, { scope: \"users\", fallbackMs: 60_000 }); }, [load]);"),
+            ],
+            "src/app/transfers/page.tsx": [
+              ("return subscribeToInventory(() => void load());",
+               "return subscribeToInventory(load, { scope: \"transfers\", fallbackMs: 60_000 });"),
+            ],
+            "src/app/page.tsx": [
+              ("return subscribeToInventory(() => void load());",
+               "return subscribeToInventory(load, { scope: \"dashboard\", fallbackMs: 60_000 });"),
+            ],
+            "src/app/products/page.tsx": [
+              ("useEffect(() => subscribeToInventory(() => void load()), [load]);",
+               "useEffect(() => subscribeToInventory(load, { scope: \"products\", fallbackMs: 120_000 }), [load]);"),
+            ],
+            "src/app/barcodes/page.tsx": [
+              ("useEffect(() => subscribeToInventory(() => void load()), [load]);",
+               "useEffect(() => subscribeToInventory(load, { scope: \"barcodes\", fallbackMs: 120_000 }), [load]);"),
+            ],
+            "src/app/locations/page.tsx": [
+              ("useEffect(() => subscribeToInventory(() => void load()), [load]);",
+               "useEffect(() => subscribeToInventory(load, { scope: \"locations\", fallbackMs: 120_000 }), [load]);"),
+            ],
+            "src/app/external-transfers/page.tsx": [
+              ("return subscribeToInventory(() => void loadJobs());",
+               "return subscribeToInventory(loadJobs, { scope: \"externalTransfers\", fallbackMs: 60_000 });"),
+            ],
+            "src/components/work-request-indicator.tsx": [
+              ("const unsubscribe = subscribeToInventory(() => void load());",
+               "const unsubscribe = subscribeToInventory(load, { scope: \"workRequests\" });"),
+            ],
+            "src/components/app-shell.tsx": [
+              ("return subscribeToInventory(loadUsers);",
+               "return subscribeToInventory(loadUsers, { scope: \"users\" });"),
+            ],
+            "src/components/location-map-view.tsx": [
+              ("return subscribeToInventory(() => void load());",
+               "return subscribeToInventory(load, { scope: \"locationMap\", fallbackMs: 60_000 });"),
+            ],
+            "src/components/user-provider.tsx": [
+              ('''const unsubscribe = subscribeToInventory(() => {
+                void getCurrentUser().then((nextUser) => {
+                  if (active) setUser(nextUser);
+                });
+              });''', '''const unsubscribe = subscribeToInventory(async () => {
+                const nextUser = await getCurrentUser();
+                if (active) setUser(nextUser);
+              }, { scope: "user", fallbackMs: 120_000 });'''),
+            ],
+          }
+
+          for path, changes in replacements.items():
+              for old, new in changes:
+                  replace_one(path, old, new)
+
+          replace_one("src/components/app-shell.tsx", "SAN WMS · V4.3.1", "SAN WMS · V4.4.0")
+          replace_one("package.json", '"version": "4.3.1"', '"version": "4.4.0"')
+          replace_one("public/sw.js", "san-wms-v4-3-1-static", "san-wms-v4-4-0-static")
+
+          sql = Path("supabase/27_REALTIME_PERFORMANCE_INDEXES.sql")
+          if not sql.exists():
+              sql.write_text(r'''-- SAN WMS V4.4.0
+          -- 동시 작업 성능 안정화를 위한 조회 인덱스
+
+          begin;
+
+          create index if not exists idx_barcodes_normalized_active
+            on public.barcodes(normalized_value)
+            where active = true;
+
+          create index if not exists idx_inventory_transactions_created_at
+            on public.inventory_transactions(created_at desc);
+
+          create index if not exists idx_scan_events_created_at
+            on public.scan_events(created_at desc);
+
+          create index if not exists idx_audit_logs_created_at
+            on public.audit_logs(created_at desc);
+
+          create index if not exists idx_inventory_balances_updated_at
+            on public.inventory_balances(updated_at desc);
+
+          create index if not exists idx_work_requests_status_ship_date
+            on public.work_requests(status, requested_ship_date);
+
+          create index if not exists idx_work_request_notifications_user_pending
+            on public.work_request_notifications(user_id, available_from desc)
+            where acknowledged_at is null;
+
+          analyze public.barcodes;
+          analyze public.inventory_transactions;
+          analyze public.scan_events;
+          analyze public.audit_logs;
+          analyze public.inventory_balances;
+          analyze public.work_requests;
+          analyze public.work_request_notifications;
+
+          commit;
+
+          select 'SAN WMS V4.4.0 realtime performance indexes completed' as result;
+          ''', encoding="utf-8")
+          PY
+      - name: Validate source
+        run: |
+          npm install --no-audit --no-fund
+          npm run typecheck
+          npm run build
+          if grep -RIn --exclude-dir=node_modules '{ event: "*", schema: "public" }' src; then
+            echo 'Unfiltered public realtime subscription remains.'
+            exit 1
+          fi
+      - name: Commit patch
+        run: |
+          if git diff --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src package.json public/sw.js supabase/27_REALTIME_PERFORMANCE_INDEXES.sql
+          git commit -m "Optimize realtime subscriptions for concurrent warehouse work"
+          git push origin HEAD:fix/v4-4-0-realtime-performance
+
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Validate realtime filtering
+        run: |
+          if grep -RIn --exclude-dir=node_modules '{ event: "*", schema: "public" }' src; then
+            echo 'Unfiltered public realtime subscription remains.'
+            exit 1
+          fi
+          grep -RIn --exclude-dir=node_modules 'scope:' src/app src/components | head -100
