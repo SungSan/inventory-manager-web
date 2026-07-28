@@ -88,7 +88,7 @@ export function BarcodeField({
         if (!next) return;
 
         const now = Date.now();
-        if (lastSubmissionRef.current.value === next && now - lastSubmissionRef.current.at < 350) return;
+        if (lastSubmissionRef.current.value === next && now - lastSubmissionRef.current.at < 120) return;
         lastSubmissionRef.current = { value: next, at: now };
         setDraft(next);
 
