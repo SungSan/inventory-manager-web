@@ -20,11 +20,18 @@ function normalizeStandardLocationOrKeep(value: string): string {
     : value.trim().toUpperCase();
 }
 
+function isDuplicateLocationCodeError(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return normalized.includes("locations_location_code_key")
+    || normalized.includes("duplicate key value");
+}
+
 function LocationsContent() {
   const [rows, setRows] = useState<Location[]>([]);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState<LocationInput>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingOriginalCode, setEditingOriginalCode] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ kind: FeedbackKind; title: string; body?: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -47,9 +54,18 @@ function LocationsContent() {
     setForm((current) => ({ ...current, [field]: normalizedValue }));
   }
 
+  function resetEditor() {
+    setForm(emptyForm);
+    setEditingId(null);
+    setEditingOriginalCode(null);
+  }
+
   function startEdit(location: Location) {
+    const originalCode = normalizeStandardLocationOrKeep(location.locationCode);
     setEditingId(location.id);
-    setForm({ locationCode: location.locationCode, zone: location.zone, barcodeValue: "" });
+    setEditingOriginalCode(originalCode);
+    setForm({ locationCode: originalCode, zone: location.zone, barcodeValue: "" });
+    setFeedback(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -60,6 +76,7 @@ function LocationsContent() {
     const normalizedForm: LocationInput = {
       ...form,
       locationCode: normalizeStandardLocationOrKeep(form.locationCode),
+      zone: form.zone.trim().toUpperCase(),
       barcodeValue: form.barcodeValue
         ? normalizeStandardLocationOrKeep(form.barcodeValue)
         : "",
@@ -67,11 +84,33 @@ function LocationsContent() {
 
     try {
       if (editingId) {
+        const originalCode = editingOriginalCode
+          ? normalizeStandardLocationOrKeep(editingOriginalCode)
+          : "";
+        const locationCodeChanged = normalizedForm.locationCode !== originalCode;
+
+        if (locationCodeChanged) {
+          const possibleDuplicates = await listLocations(normalizedForm.locationCode, true);
+          const duplicate = possibleDuplicates.find((location) =>
+            location.id !== editingId
+            && normalizeStandardLocationOrKeep(location.locationCode) === normalizedForm.locationCode,
+          );
+          if (duplicate) {
+            throw new Error(`이미 등록된 로케이션 코드입니다: ${normalizedForm.locationCode}`);
+          }
+        }
+
+        // 코드가 바뀌지 않았다면 p_new_location_code를 null로 보내 기존 코드의
+        // UNIQUE 제약을 다시 건드리지 않고 구역/상태만 수정합니다.
         await updateLocation(editingId, {
-          locationCode: normalizedForm.locationCode,
+          ...(locationCodeChanged ? { locationCode: normalizedForm.locationCode } : {}),
           zone: normalizedForm.zone,
         });
-        setFeedback({ kind: "success", title: "로케이션 수정 완료" });
+        setFeedback({
+          kind: "success",
+          title: "로케이션 수정 완료",
+          body: normalizedForm.locationCode,
+        });
       } else {
         await createLocation(normalizedForm);
         setFeedback({
@@ -80,14 +119,16 @@ function LocationsContent() {
           body: normalizedForm.locationCode,
         });
       }
-      setForm(emptyForm);
-      setEditingId(null);
+      resetEditor();
       await load();
     } catch (cause) {
+      const rawMessage = cause instanceof Error ? cause.message : "오류";
       setFeedback({
         kind: "error",
         title: "로케이션 저장 실패",
-        body: cause instanceof Error ? cause.message : "오류",
+        body: isDuplicateLocationCodeError(rawMessage)
+          ? `이미 등록된 로케이션 코드입니다: ${normalizedForm.locationCode}`
+          : rawMessage,
       });
     } finally {
       setBusy(false);
@@ -108,10 +149,7 @@ function LocationsContent() {
           {editingId ? (
             <button
               className="button button-secondary button-compact"
-              onClick={() => {
-                setEditingId(null);
-                setForm(emptyForm);
-              }}
+              onClick={resetEditor}
             >
               수정 취소
             </button>
