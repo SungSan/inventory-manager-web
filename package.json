@@ -1,10 +1,10 @@
 {
   "name": "san-wms",
-  "version": "4.4.0",
+  "version": "4.4.1",
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run typecheck && next build",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit"

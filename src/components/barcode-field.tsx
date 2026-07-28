@@ -1,7 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CameraScanner } from "@/components/camera-scanner";
+import { listLocations } from "@/lib/inventory-api";
+import {
+  containsHangul,
+  isValidLocationBarcodeFormat,
+  normalizeLocationBarcodeInput,
+} from "@/lib/location-barcode";
+
+type BarcodeInputKind = "generic" | "location" | "mixed";
+
+function inferBarcodeInputKind(label: string, placeholder: string): BarcodeInputKind {
+  const hint = `${label} ${placeholder}`;
+  const hasLocation = /로케이션|\bLOC\b/i.test(hint);
+  const hasProduct = /상품|SKU/i.test(hint);
+  if (hasLocation && hasProduct) return "mixed";
+  return hasLocation ? "location" : "generic";
+}
 
 export function BarcodeField({
   label,
@@ -23,6 +39,11 @@ export function BarcodeField({
   const [draft, setDraft] = useState(value ?? "");
   const [cameraOpen, setCameraOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const composingRef = useRef(false);
+  const pendingEnterRef = useRef(false);
+  const submittingRef = useRef(false);
+  const lastSubmissionRef = useRef({ value: "", at: 0 });
+  const inputKind = useMemo(() => inferBarcodeInputKind(label, placeholder), [label, placeholder]);
 
   // 상위 화면에서 확정된 상품/로케이션 바코드를 입력창에도 그대로 유지합니다.
   useEffect(() => {
@@ -36,16 +57,50 @@ export function BarcodeField({
     }
   }, [autoFocus, disabled, resetToken]);
 
+  const finalValue = useCallback(async (raw: string): Promise<string> => {
+    if (inputKind === "location") return normalizeLocationBarcodeInput(raw);
+
+    if (inputKind === "mixed" && containsHangul(raw)) {
+      const locationCandidate = normalizeLocationBarcodeInput(raw);
+      if (isValidLocationBarcodeFormat(locationCandidate)) {
+        try {
+          const locations = await listLocations(locationCandidate, false);
+          const exists = locations.some(
+            (location) => normalizeLocationBarcodeInput(location.locationCode) === locationCandidate,
+          );
+          if (exists) return locationCandidate;
+        } catch {
+          // LOC 후보 확인이 실패하면 상품 바코드 원문 처리 흐름을 유지합니다.
+        }
+      }
+    }
+
+    return raw.trim();
+  }, [inputKind]);
+
   const submit = useCallback(
     async (raw: string) => {
-      const next = raw.trim();
-      if (!next || disabled) return;
-      const accepted = await onSubmit(next);
-      if (accepted !== false) {
-        setDraft(value === undefined ? "" : next);
+      if (disabled || submittingRef.current) return;
+      submittingRef.current = true;
+
+      try {
+        const next = await finalValue(raw);
+        if (!next) return;
+
+        const now = Date.now();
+        if (lastSubmissionRef.current.value === next && now - lastSubmissionRef.current.at < 120) return;
+        lastSubmissionRef.current = { value: next, at: now };
+        setDraft(next);
+
+        const accepted = await onSubmit(next);
+        if (accepted !== false) {
+          setDraft(value === undefined ? "" : next);
+        }
+      } finally {
+        submittingRef.current = false;
       }
     },
-    [disabled, onSubmit, value],
+    [disabled, finalValue, onSubmit, value],
   );
 
   return (
@@ -62,11 +117,31 @@ export function BarcodeField({
             autoComplete="off"
             inputMode="text"
             onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                void submit(draft);
+            onCompositionStart={() => {
+              composingRef.current = true;
+            }}
+            onCompositionEnd={(event) => {
+              composingRef.current = false;
+              const completed = inputKind === "location"
+                ? normalizeLocationBarcodeInput(event.currentTarget.value)
+                : event.currentTarget.value;
+              setDraft(completed);
+
+              if (pendingEnterRef.current) {
+                pendingEnterRef.current = false;
+                window.setTimeout(() => void submit(inputRef.current?.value ?? completed), 0);
               }
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter") return;
+              event.preventDefault();
+
+              if (composingRef.current || event.nativeEvent.isComposing || event.keyCode === 229) {
+                pendingEnterRef.current = true;
+                return;
+              }
+
+              void submit(event.currentTarget.value);
             }}
           />
           <button
