@@ -1,3 +1,4 @@
+// Vercel production redeploy trigger: 2026-07-29 16:33 KST
 const CACHE = "san-wms-v4-5-3-static";
 const ASSETS = ["/", "/work-requests", "/my-consent", "/scan", "/stocktakes", "/inventory", "/utilization", "/location-map", "/transfers", "/external-transfers", "/products", "/locations", "/barcodes", "/logs", "/import", "/users"];
 self.addEventListener("install", (event) => {
