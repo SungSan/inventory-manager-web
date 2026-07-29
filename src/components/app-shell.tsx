@@ -9,7 +9,9 @@ import { StocktakeLiveEnhancer } from "@/components/stocktake-live-enhancer";
 import { WorkRequestIndicator } from "@/components/work-request-indicator";
 import { WorkRequestRuleEnhancer } from "@/components/work-request-rule-enhancer";
 import { useUser } from "@/components/user-provider";
+import { APP_VERSION_LABEL } from "@/lib/app-version";
 import { hasPermission, roleLabels, type Permission } from "@/lib/permissions";
+import { desktopActivityStorageKey } from "@/lib/session-guard-api";
 import { isDemoMode, getSupabaseClient } from "@/lib/supabase";
 import { listUsers, subscribeToInventory } from "@/lib/inventory-api";
 import type { UserProfile } from "@/types/domain";
@@ -53,13 +55,23 @@ function ShellContent({ children }: { children: React.ReactNode }) {
       <WorkRequestRuleEnhancer />
       <NumericInputGuard />
       <header className="topbar">
-        <div><p className="eyebrow">SAN WMS · V4.4.4</p><h1>재고관리</h1></div>
+        <div><p className="eyebrow">SAN WMS · {APP_VERSION_LABEL}</p><h1>재고관리</h1></div>
         <div className="topbar-meta">
           <WorkRequestIndicator />
           <span className={`mode-badge ${isDemoMode() ? "demo" : "live"}`}>{isDemoMode() ? "DEMO" : "LIVE"}</span>
           {user ? <span className="user-chip">{user.displayName} · {roleLabels[user.role]}</span> : null}
           {isDemoMode() && user ? <select className="user-switch" value={user.id} onChange={(event) => void switchDemoUser(event.target.value)} aria-label="데모 사용자 변경">{users.map((item) => <option key={item.id} value={item.id}>{item.displayName} ({roleLabels[item.role]})</option>)}</select> : null}
-          {!isDemoMode() ? <button className="button button-compact button-secondary" onClick={() => void getSupabaseClient()?.auth.signOut()}>로그아웃</button> : null}
+          {!isDemoMode() ? (
+            <button
+              className="button button-compact button-secondary"
+              onClick={() => {
+                if (user) localStorage.removeItem(desktopActivityStorageKey(user.id));
+                void getSupabaseClient()?.auth.signOut({ scope: "local" });
+              }}
+            >
+              로그아웃
+            </button>
+          ) : null}
         </div>
       </header>
       <nav className="main-nav" aria-label="주요 메뉴">{visibleNav.map((item) => <Link key={item.href} href={item.href} className={pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href)) ? "active" : ""}>{item.label}</Link>)}</nav>

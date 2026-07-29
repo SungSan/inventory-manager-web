@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { completeUserIdentityAndConsent, getUserAccessStatus, type UserAccessStatus } from "@/lib/identity-api";
+import { APP_VERSION_LABEL, displayContentWithCurrentAppVersion } from "@/lib/app-version";
 import { getSupabaseClient } from "@/lib/supabase";
 import styles from "./identity-consent-gate.module.css";
 
@@ -102,7 +103,7 @@ export function IdentityConsentGate({ children }: { children: React.ReactNode })
               <p className="muted">동의 확인번호</p>
               <strong>{receipt.confirmationNo}</strong>
             </div>
-            <p>이용조건 버전 {receipt.termsVersion} · {new Date(receipt.acceptedAt).toLocaleString("ko-KR")}</p>
+            <p>SAN WMS {APP_VERSION_LABEL} · 이용조건 기록 버전 {receipt.termsVersion} · {new Date(receipt.acceptedAt).toLocaleString("ko-KR")}</p>
             <button
               className="button button-primary"
               onClick={async () => {
@@ -187,20 +188,20 @@ export function IdentityConsentGate({ children }: { children: React.ReactNode })
           </label>
         </section>
 
-        <p className={styles.notice}>동의 시점에 서버에서 활성화된 최신 이용조건 버전 <strong>{status.terms.version}</strong>이 자동 적용됩니다. 사용자가 버전을 직접 입력할 필요가 없습니다.</p>
+        <p className={styles.notice}>현재 실행 중인 SAN WMS 버전 <strong>{APP_VERSION_LABEL}</strong> 기준 안내문입니다. 이용조건 동의 기록은 서버의 활성 문서 버전과 원문 확인값으로 별도 보존됩니다.</p>
 
         <section className={styles.documentGrid}>
           <article className={styles.document}>
             <div className={styles.documentHeader}>
               <div><p className="eyebrow">TERMS</p><h3>{status.terms.title}</h3></div>
-              <span className={styles.status}>현재 적용 버전 {status.terms.version}</span>
+              <span className={styles.status}>현재 앱 버전 {APP_VERSION_LABEL}</span>
             </div>
-            <pre className={styles.documentBody}>{status.terms.content}</pre>
+            <pre className={styles.documentBody}>{displayContentWithCurrentAppVersion(status.terms.content)}</pre>
           </article>
           <article className={styles.document}>
             <div className={styles.documentHeader}>
               <div><p className="eyebrow">PRIVACY NOTICE</p><h3>{status.privacyNotice.title}</h3></div>
-              <span className={styles.status}>버전 {status.privacyNotice.version}</span>
+              <span className={styles.status}>앱 버전 {APP_VERSION_LABEL}</span>
             </div>
             <pre className={styles.documentBody}>{status.privacyNotice.content}</pre>
           </article>
