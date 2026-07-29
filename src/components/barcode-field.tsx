@@ -5,6 +5,7 @@ import { CameraScanner } from "@/components/camera-scanner";
 import { resolveBarcodeCandidates } from "@/lib/inventory-api";
 import {
   containsHangul,
+  convertHangulToQwerty,
   isValidLocationBarcodeFormat,
   normalizeLocationBarcodeInput,
 } from "@/lib/location-barcode";
@@ -24,6 +25,12 @@ function isResolvedLocationMatch(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
   const match = value as { target?: { type?: string; location?: unknown } };
   return match.target?.type === "location" && Boolean(match.target.location);
+}
+
+function normalizeHidQwertyCandidate(raw: string): string {
+  return convertHangulToQwerty(raw.normalize("NFKC"))
+    .replace(/[\s\r\n\t]+/g, "")
+    .toUpperCase();
 }
 
 async function activeLocationCodeExists(locationCode: string): Promise<boolean> {
@@ -92,28 +99,44 @@ export function BarcodeField({
   const finalValue = useCallback(async (raw: string): Promise<string> => {
     if (inputKind === "location") return normalizeLocationBarcodeInput(raw);
 
-    if (inputKind === "mixed" && containsHangul(raw)) {
-      const locationCandidate = normalizeLocationBarcodeInput(raw);
-      if (isValidLocationBarcodeFormat(locationCandidate)) {
-        try {
-          // 혼합 입력창은 먼저 기존 SAN WMS 바코드 판별 RPC로 LOC 여부를 확인합니다.
-          const matches = await resolveBarcodeCandidates(
-            locationCandidate,
-            "location",
-            "MIXED_LOCATION_PRECHECK",
-          );
-          if (matches.some(isResolvedLocationMatch)) return locationCandidate;
-        } catch {
-          // RPC 확인 실패 시 아래의 정확한 LOC 코드 확인으로 한 번 더 검증합니다.
-        }
+    const original = raw.trim();
+    if (inputKind !== "mixed" || !containsHangul(raw)) return original;
 
-        // LOC 코드 자체를 기본 바코드로 쓰는 로케이션도 놓치지 않습니다.
-        if (await activeLocationCodeExists(locationCandidate)) return locationCandidate;
+    // PM3 HID 입력이 한국어 IME를 통과해 완성형 한글·자모·공백으로 뭉개진 경우,
+    // 최종 문자열 전체를 두벌식 QWERTY 키값으로 복원한다.
+    const qwertyCandidate = normalizeHidQwertyCandidate(raw);
+    if (!qwertyCandidate || containsHangul(qwertyCandidate)) return original;
+
+    const locationCandidate = normalizeLocationBarcodeInput(qwertyCandidate);
+    if (isValidLocationBarcodeFormat(locationCandidate)) {
+      try {
+        const locationMatches = await resolveBarcodeCandidates(
+          locationCandidate,
+          "location",
+          "MIXED_HID_LOCATION_PRECHECK",
+        );
+        if (locationMatches.some(isResolvedLocationMatch)) return locationCandidate;
+      } catch {
+        // RPC 확인 실패 시 정확한 활성 LOC 코드 조회로 한 번 더 검증한다.
       }
+
+      if (await activeLocationCodeExists(locationCandidate)) return locationCandidate;
     }
 
-    // 상품 바코드와 일반 입력은 원본을 유지합니다.
-    return raw.trim();
+    try {
+      // 혼합 스캔창에서는 복원값이 실제 등록된 상품 또는 LOC 바코드일 때만 채택한다.
+      // 일반 한글 텍스트나 미등록 값은 원문으로 되돌려 오탐을 방지한다.
+      const registeredMatches = await resolveBarcodeCandidates(
+        qwertyCandidate,
+        undefined,
+        "MIXED_HID_BARCODE_PRECHECK",
+      );
+      if (registeredMatches.length > 0) return qwertyCandidate;
+    } catch {
+      // 판별 RPC 실패 시 기존 원문 처리 흐름을 유지한다.
+    }
+
+    return original;
   }, [inputKind]);
 
   const submit = useCallback(
@@ -179,14 +202,14 @@ export function BarcodeField({
                 clearPendingCompositionTimer();
 
                 // 일부 Android HID/한글 IME는 Enter 뒤 compositionend를 보내지 않는다.
-                // 짧게 기다린 뒤 DOM에 확정된 최종 문자열을 한 번만 제출한다.
+                // DOM의 최종 조합 문자열이 확정될 시간을 준 뒤 한 번만 제출한다.
                 pendingCompositionTimerRef.current = window.setTimeout(() => {
                   pendingCompositionTimerRef.current = null;
                   if (!pendingEnterRef.current) return;
                   pendingEnterRef.current = false;
                   composingRef.current = false;
                   void submit(inputRef.current?.value ?? rawValue);
-                }, 120);
+                }, 220);
                 return;
               }
 
