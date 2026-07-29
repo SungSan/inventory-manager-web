@@ -61,17 +61,29 @@ where app_version_snapshot is null
   and accepted_at >= timestamptz '2026-07-24 13:30:00+09';
 
 update public.profiles p
-set latest_app_version = latest.app_version_snapshot,
+set latest_app_version = (
+      select a.app_version_snapshot
+      from public.terms_acceptances a
+      where a.user_id = p.id
+        and a.app_version_snapshot is not null
+      order by a.accepted_at desc
+      limit 1
+    ),
     updated_at = now()
-from lateral (
-  select a.app_version_snapshot
-  from public.terms_acceptances a
-  where a.user_id = p.id
-    and a.app_version_snapshot is not null
-  order by a.accepted_at desc
-  limit 1
-) latest
-where p.latest_app_version is distinct from latest.app_version_snapshot;
+where exists (
+    select 1
+    from public.terms_acceptances a
+    where a.user_id = p.id
+      and a.app_version_snapshot is not null
+  )
+  and p.latest_app_version is distinct from (
+    select a.app_version_snapshot
+    from public.terms_acceptances a
+    where a.user_id = p.id
+      and a.app_version_snapshot is not null
+    order by a.accepted_at desc
+    limit 1
+  );
 
 -- 현재 활성 원문을 V4.5.3 문서 행으로 복제한다.
 -- 기존 문서 행과 기존 동의 스냅샷은 변경하지 않는다.
