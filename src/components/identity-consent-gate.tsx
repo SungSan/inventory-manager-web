@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { completeUserIdentityAndConsent, getUserAccessStatus, type UserAccessStatus } from "@/lib/identity-api";
-import { APP_VERSION_LABEL, displayContentWithCurrentAppVersion } from "@/lib/app-version";
+import { APP_VERSION_LABEL } from "@/lib/app-version";
 import { getSupabaseClient } from "@/lib/supabase";
 import styles from "./identity-consent-gate.module.css";
 
@@ -189,20 +189,20 @@ export function IdentityConsentGate({ children }: { children: React.ReactNode })
           </label>
         </section>
 
-        <p className={styles.notice}>현재 실행 중인 SAN WMS 버전 <strong>{APP_VERSION_LABEL}</strong>과 서버의 활성 이용조건 문서 버전이 동의 기록에 각각 저장됩니다.</p>
+        <p className={styles.notice}>현재 실행 중인 SAN WMS 앱 버전 <strong>{APP_VERSION_LABEL}</strong>과 서버의 활성 이용조건 문서 버전 <strong>{status.terms.version}</strong>이 동의 기록에 각각 저장됩니다.</p>
 
         <section className={styles.documentGrid}>
           <article className={styles.document}>
             <div className={styles.documentHeader}>
               <div><p className="eyebrow">TERMS</p><h3>{status.terms.title}</h3></div>
-              <span className={styles.status}>현재 앱 버전 {APP_VERSION_LABEL}</span>
+              <span className={styles.status}>약관 문서 {status.terms.version}</span>
             </div>
-            <pre className={styles.documentBody}>{displayContentWithCurrentAppVersion(status.terms.content)}</pre>
+            <pre className={styles.documentBody}>{status.terms.content}</pre>
           </article>
           <article className={styles.document}>
             <div className={styles.documentHeader}>
               <div><p className="eyebrow">PRIVACY NOTICE</p><h3>{status.privacyNotice.title}</h3></div>
-              <span className={styles.status}>약관 문서 {status.privacyNotice.version}</span>
+              <span className={styles.status}>개인정보 문서 {status.privacyNotice.version}</span>
             </div>
             <pre className={styles.documentBody}>{status.privacyNotice.content}</pre>
           </article>
