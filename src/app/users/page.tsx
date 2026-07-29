@@ -20,6 +20,10 @@ import {
 import { roleLabels } from "@/lib/permissions";
 import type { UserRole } from "@/types/domain";
 
+function formatDateTime(value?: string): string {
+  return value ? new Date(value).toLocaleString("ko-KR") : "접속 기록 없음";
+}
+
 function UsersContent() {
   const { user: currentUser } = useUser();
   const [users, setUsers] = useState<AdminUserSecurityStatus[]>([]);
@@ -117,7 +121,7 @@ function UsersContent() {
 
   return <div className="page-stack">
     <section className="section-heading">
-      <div><p className="eyebrow">ACCESS & IDENTITY CONTROL</p><h2>사용자·본인확인 관리</h2><p className="muted">역할, 배정 이름, PIN·동의 상태와 계정 사용 여부를 관리합니다. 삭제는 작업·동의·감사 이력을 보존하는 논리 삭제 방식이며 PIN 원문과 해시값은 노출되지 않습니다.</p></div>
+      <div><p className="eyebrow">ACCESS & IDENTITY CONTROL</p><h2>사용자·본인확인 관리</h2><p className="muted">역할, 배정 이름, PIN·동의 상태, 마지막 로그인과 계정 사용 여부를 관리합니다. 삭제는 작업·동의·감사 이력을 보존하는 논리 삭제 방식이며 PIN 원문과 해시값은 노출되지 않습니다.</p></div>
       <div className="row-actions">
         <label className="checkbox-label"><input type="checkbox" checked={showDeleted} onChange={(event) => setShowDeleted(event.target.checked)} />삭제 사용자 표시 ({deletedCount})</label>
         <button className="button button-secondary" onClick={() => void requireAll()} disabled={busyId === "ALL"}>전체 사용자 재동의 요구</button>
@@ -126,7 +130,7 @@ function UsersContent() {
     {feedback ? <Feedback kind={feedback.kind} title={feedback.title}>{feedback.body}</Feedback> : null}
     <section className="panel">
       <div className="table-wrap"><table>
-        <thead><tr><th>사용자</th><th>로그인 ID·상태</th><th>역할</th><th>계정 유형</th><th>PIN</th><th>최신 이용조건</th><th>관리</th></tr></thead>
+        <thead><tr><th>사용자</th><th>로그인 ID·상태</th><th>마지막 로그인</th><th>역할</th><th>계정 유형</th><th>PIN</th><th>동의 상태</th><th>관리</th></tr></thead>
         <tbody>{visibleUsers.map((user) => {
           const busy = busyId === user.id;
           const deleted = Boolean(user.deletedAt);
@@ -139,6 +143,7 @@ function UsersContent() {
               {isSelf ? <span className="status-badge primary">현재 계정</span> : null}
               {deleted ? <><br/><small className="muted">{user.deletedAt ? new Date(user.deletedAt).toLocaleString("ko-KR") : ""} · {user.deletionReason || "사유 없음"}</small></> : !user.active ? <><br/><small className="muted">{user.disabledAt ? new Date(user.disabledAt).toLocaleString("ko-KR") : ""} · {user.disableReason || "사유 없음"}</small></> : null}
             </td>
+            <td><strong>{formatDateTime(user.lastSignInAt)}</strong><br/><small className="muted">Supabase 인증 성공 기준</small></td>
             <td><select value={user.role} onChange={(event) => void changeRole(user, event.target.value as UserRole)} disabled={!editable || isSelf}>
               <option value="admin">관리자</option><option value="manager">매니저</option><option value="operator">작업자</option><option value="viewer">조회자</option>
             </select></td>
@@ -146,7 +151,10 @@ function UsersContent() {
               <option value="HUMAN">HUMAN</option><option value="SERVICE">SERVICE</option><option value="API">API</option><option value="AUTOMATION">AUTOMATION</option><option value="SYSTEM">SYSTEM</option>
             </select><br/><small className="muted">{user.isServiceAccount ? "최초 절차 제외" : "본인확인 대상"}</small></td>
             <td><span className={`status-badge ${user.pinConfigured ? "success" : "inactive"}`}>{user.pinConfigured ? "설정 완료" : user.pinResetRequired ? "재설정 필요" : "미설정"}</span><br/><small>{user.pinSetAt ? new Date(user.pinSetAt).toLocaleString("ko-KR") : "-"}</small></td>
-            <td><span className={`status-badge ${user.latestTermsAccepted ? "success" : "inactive"}`}>{user.latestTermsAccepted ? "동의 완료" : "재동의 필요"}</span><br/><small>{user.latestTermsVersion || "-"} {user.latestTermsAcceptedAt ? `· ${new Date(user.latestTermsAcceptedAt).toLocaleDateString("ko-KR")}` : ""}</small></td>
+            <td><span className={`status-badge ${user.latestTermsAccepted ? "success" : "inactive"}`}>{user.latestTermsAccepted ? "동의 완료" : "재동의 필요"}</span><br/>
+              <small>앱 {user.latestAppVersion ? `V${user.latestAppVersion}` : "기록 없음"}</small><br/>
+              <small>약관 {user.latestTermsVersion || "-"}{user.latestTermsAcceptedAt ? ` · ${new Date(user.latestTermsAcceptedAt).toLocaleString("ko-KR")}` : ""}</small>
+            </td>
             <td><div className="action-row">
               {deleted ? <button className="button button-secondary button-compact" onClick={() => void restoreUser(user)} disabled={busy || isSelf}>삭제 복구</button> : <>
                 <button className="button button-secondary button-compact" onClick={() => void editAssignedName(user)} disabled={!editable}>이름 수정</button>
