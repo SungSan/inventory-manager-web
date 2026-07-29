@@ -6,7 +6,6 @@ import { resolveBarcodeCandidates } from "@/lib/inventory-api";
 import {
   containsHangul,
   convertHangulToQwerty,
-  isValidLocationBarcodeFormat,
   normalizeLocationBarcodeInput,
 } from "@/lib/location-barcode";
 import { getSupabaseClient } from "@/lib/supabase";
@@ -27,25 +26,52 @@ function isResolvedLocationMatch(value: unknown): boolean {
   return match.target?.type === "location" && Boolean(match.target.location);
 }
 
-function normalizeHidQwertyCandidate(raw: string): string {
-  return convertHangulToQwerty(raw.normalize("NFKC"))
-    .replace(/[\s\r\n\t]+/g, "")
+function buildHidLocationCandidates(raw: string): string[] {
+  const qwertyWithSpaces = convertHangulToQwerty(raw.normalize("NFKC"))
+    .replace(/[\r\n\t]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
     .toUpperCase();
+  const compact = qwertyWithSpaces.replace(/\s+/g, "");
+  const standardLocation = normalizeLocationBarcodeInput(compact);
+
+  return Array.from(
+    new Set([qwertyWithSpaces, compact, standardLocation].filter((candidate) => Boolean(candidate))),
+  );
 }
 
-async function activeLocationCodeExists(locationCode: string): Promise<boolean> {
+async function findActiveLocationCode(candidates: string[]): Promise<string | null> {
   const supabase = getSupabaseClient();
-  if (!supabase) return false;
+  if (!supabase || candidates.length === 0) return null;
 
   const { data, error } = await supabase
     .from("locations")
-    .select("id")
-    .eq("location_code", locationCode)
+    .select("location_code")
     .eq("active", true)
+    .in("location_code", candidates)
     .limit(1);
 
-  if (error) return false;
-  return Boolean(data?.length);
+  if (error) return null;
+  const locationCode = data?.[0]?.location_code;
+  return typeof locationCode === "string" && locationCode.trim() ? locationCode.trim() : null;
+}
+
+async function resolveMixedHidLocation(candidates: string[]): Promise<string | null> {
+  for (const candidate of candidates) {
+    try {
+      const locationMatches = await resolveBarcodeCandidates(
+        candidate,
+        "location",
+        "MIXED_HID_LOCATION_PRECHECK",
+      );
+      if (locationMatches.some(isResolvedLocationMatch)) return candidate;
+    } catch {
+      // 후보별 RPC 확인 실패 시 다음 후보와 locations 정확 조회를 계속 진행한다.
+    }
+  }
+
+  // ERROR, RETURN, GLOBI STANDBY처럼 표준 하이픈 규칙이 없는 LOC 코드도 확인한다.
+  return findActiveLocationCode(candidates);
 }
 
 export function BarcodeField({
@@ -102,40 +128,18 @@ export function BarcodeField({
     const original = raw.trim();
     if (inputKind !== "mixed" || !containsHangul(raw)) return original;
 
-    // PM3 HID 입력이 한국어 IME를 통과해 완성형 한글·자모·공백으로 뭉개진 경우,
-    // 최종 문자열 전체를 두벌식 QWERTY 키값으로 복원한다.
-    const qwertyCandidate = normalizeHidQwertyCandidate(raw);
-    if (!qwertyCandidate || containsHangul(qwertyCandidate)) return original;
-
-    const locationCandidate = normalizeLocationBarcodeInput(qwertyCandidate);
-    if (isValidLocationBarcodeFormat(locationCandidate)) {
-      try {
-        const locationMatches = await resolveBarcodeCandidates(
-          locationCandidate,
-          "location",
-          "MIXED_HID_LOCATION_PRECHECK",
-        );
-        if (locationMatches.some(isResolvedLocationMatch)) return locationCandidate;
-      } catch {
-        // RPC 확인 실패 시 정확한 활성 LOC 코드 조회로 한 번 더 검증한다.
-      }
-
-      if (await activeLocationCodeExists(locationCandidate)) return locationCandidate;
+    // PM3 HID 입력이 한국어 IME를 통과한 최종 문자열에서 LOC 후보를 복원한다.
+    // 문자열 LOC의 실제 공백과 IME가 삽입한 불필요한 공백을 모두 대응하기 위해
+    // 공백 유지형, 공백 제거형, 기존 표준 하이픈형 후보를 각각 검증한다.
+    const candidates = buildHidLocationCandidates(raw);
+    if (candidates.length === 0 || candidates.some((candidate) => containsHangul(candidate))) {
+      return original;
     }
 
-    try {
-      // 혼합 스캔창에서는 복원값이 실제 등록된 상품 또는 LOC 바코드일 때만 채택한다.
-      // 일반 한글 텍스트나 미등록 값은 원문으로 되돌려 오탐을 방지한다.
-      const registeredMatches = await resolveBarcodeCandidates(
-        qwertyCandidate,
-        undefined,
-        "MIXED_HID_BARCODE_PRECHECK",
-      );
-      if (registeredMatches.length > 0) return qwertyCandidate;
-    } catch {
-      // 판별 RPC 실패 시 기존 원문 처리 흐름을 유지한다.
-    }
+    const resolvedLocation = await resolveMixedHidLocation(candidates);
+    if (resolvedLocation) return resolvedLocation;
 
+    // 상품 바코드에는 한글 역변환을 적용하지 않는다.
     return original;
   }, [inputKind]);
 
