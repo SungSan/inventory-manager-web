@@ -14,7 +14,6 @@ alter table public.profiles
   add column if not exists latest_app_version text;
 
 -- V4.5.0 운영 배포 이후 생성된 기존 동의 기록은 당시 실제 앱 버전으로 보정한다.
--- 이 구간은 V4.5.0 운영 배포 시각부터 이번 수정 요청 직전까지이다.
 update public.terms_acceptances
 set app_version_snapshot = '4.5.0'
 where app_version_snapshot is null
@@ -22,77 +21,21 @@ where app_version_snapshot is null
   and accepted_at <  timestamptz '2026-07-29 14:00:00+09';
 
 update public.profiles p
-set latest_app_version = latest.app_version_snapshot
-from lateral (
+set latest_app_version = (
   select a.app_version_snapshot
   from public.terms_acceptances a
   where a.user_id = p.id
     and a.app_version_snapshot is not null
   order by a.accepted_at desc
   limit 1
-) latest
-where p.latest_app_version is null;
-
--- 기존 동의 RPC를 그대로 사용하되, 성공 후 실제 앱 버전 스냅샷을 기록한다.
-create or replace function public.complete_user_identity_and_consent_v2(
-  p_entered_name text,
-  p_new_pin text,
-  p_pin_confirm text,
-  p_final_pin text,
-  p_terms_checked boolean,
-  p_privacy_checked boolean,
-  p_app_version text
 )
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, private, extensions
-as $$
-declare
-  v_result jsonb;
-  v_app_version text;
-  v_confirmation text;
-begin
-  v_app_version := nullif(btrim(coalesce(p_app_version, '')), '');
-
-  if v_app_version is null or v_app_version !~ '^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$' then
-    return jsonb_build_object(
-      'ok', false,
-      'error_code', 'APP_VERSION_REQUIRED',
-      'message', '현재 SAN WMS 앱 버전을 확인할 수 없습니다.'
-    );
-  end if;
-
-  v_result := public.complete_user_identity_and_consent(
-    p_entered_name,
-    p_new_pin,
-    p_pin_confirm,
-    p_final_pin,
-    p_terms_checked,
-    p_privacy_checked
+where p.latest_app_version is null
+  and exists (
+    select 1
+    from public.terms_acceptances a
+    where a.user_id = p.id
+      and a.app_version_snapshot is not null
   );
-
-  if coalesce((v_result ->> 'ok')::boolean, false) then
-    v_confirmation := nullif(v_result ->> 'confirmation_no', '');
-
-    if v_confirmation is not null then
-      update public.terms_acceptances
-      set app_version_snapshot = v_app_version
-      where confirmation_no = v_confirmation
-        and user_id = auth.uid();
-    end if;
-
-    update public.profiles
-    set latest_app_version = v_app_version,
-        updated_at = now()
-    where id = auth.uid();
-
-    v_result := v_result || jsonb_build_object('app_version', v_app_version);
-  end if;
-
-  return v_result;
-end;
-$$;
 
 -- PIN 검증을 한 곳에서 처리한다.
 -- 일부 기존 bcrypt 구현이 저장한 $2b$/$2y$ 해시도 pgcrypto의 $2a$ 방식으로 검증한다.
@@ -133,6 +76,83 @@ begin
   end if;
 
   return false;
+end;
+$$;
+
+-- 기존 동의 RPC를 그대로 사용하되, 성공 후 실제 앱 버전 스냅샷을 기록한다.
+-- 레거시 $2b$/$2y$ PIN은 기존 RPC 호출 전에 pgcrypto 기본 형식으로 안전하게 재해시한다.
+create or replace function public.complete_user_identity_and_consent_v2(
+  p_entered_name text,
+  p_new_pin text,
+  p_pin_confirm text,
+  p_final_pin text,
+  p_terms_checked boolean,
+  p_privacy_checked boolean,
+  p_app_version text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, private, extensions
+as $$
+declare
+  v_result jsonb;
+  v_app_version text;
+  v_confirmation text;
+  v_existing_hash text;
+begin
+  v_app_version := nullif(btrim(coalesce(p_app_version, '')), '');
+
+  if v_app_version is null or v_app_version !~ '^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$' then
+    return jsonb_build_object(
+      'ok', false,
+      'error_code', 'APP_VERSION_REQUIRED',
+      'message', '현재 SAN WMS 앱 버전을 확인할 수 없습니다.'
+    );
+  end if;
+
+  select c.pin_hash into v_existing_hash
+  from private.user_pin_credentials c
+  where c.user_id = auth.uid();
+
+  if v_existing_hash ~ '^\$2[by]\$'
+     and private.verify_user_pin_hash(p_final_pin, v_existing_hash) then
+    update private.user_pin_credentials
+    set pin_hash = crypt(btrim(p_final_pin), gen_salt('bf', 12)),
+        failed_attempts = 0,
+        locked_until = null,
+        updated_at = clock_timestamp()
+    where user_id = auth.uid();
+  end if;
+
+  v_result := public.complete_user_identity_and_consent(
+    p_entered_name,
+    p_new_pin,
+    p_pin_confirm,
+    p_final_pin,
+    p_terms_checked,
+    p_privacy_checked
+  );
+
+  if coalesce((v_result ->> 'ok')::boolean, false) then
+    v_confirmation := nullif(v_result ->> 'confirmation_no', '');
+
+    if v_confirmation is not null then
+      update public.terms_acceptances
+      set app_version_snapshot = v_app_version
+      where confirmation_no = v_confirmation
+        and user_id = auth.uid();
+    end if;
+
+    update public.profiles
+    set latest_app_version = v_app_version,
+        updated_at = now()
+    where id = auth.uid();
+
+    v_result := v_result || jsonb_build_object('app_version', v_app_version);
+  end if;
+
+  return v_result;
 end;
 $$;
 
@@ -219,7 +239,6 @@ begin
     );
   end if;
 
-  -- 레거시 $2b$/$2y$ 해시는 검증 성공 시 pgcrypto 기본 bcrypt 해시로 교체한다.
   update private.user_pin_credentials
   set pin_hash = case
         when pin_hash ~ '^\$2[by]\$' then crypt(v_normalized_pin, gen_salt('bf', 12))
