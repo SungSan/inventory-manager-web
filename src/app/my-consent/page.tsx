@@ -30,7 +30,7 @@ export default function MyConsentPage() {
       <section>
         <p className="eyebrow">MY CONSENT RECORDS</p>
         <h2>내 동의 내역</h2>
-        <p className="muted">본인이 동의한 이용조건 제목, 버전, 동의 일시, 전문 및 동의 확인번호를 확인합니다.</p>
+        <p className="muted">동의 당시 SAN WMS 앱 버전과 법적 이용조건 문서 버전, 동의 일시, 전문 및 확인번호를 확인합니다.</p>
       </section>
 
       {error ? <p className="inline-error">{error}</p> : null}
@@ -44,11 +44,12 @@ export default function MyConsentPage() {
         {items.length > 0 ? (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>동의 일시</th><th>이용조건</th><th>버전</th><th>동의 확인번호</th><th>전문</th></tr></thead>
+              <thead><tr><th>동의 일시</th><th>이용조건</th><th>앱 버전</th><th>약관 버전</th><th>동의 확인번호</th><th>전문</th></tr></thead>
               <tbody>{items.map((item) => (
                 <tr key={item.id}>
                   <td>{new Date(item.acceptedAt).toLocaleString("ko-KR")}</td>
                   <td>{item.termsTitle}</td>
+                  <td>{item.appVersion ? `V${item.appVersion}` : "기록 없음"}</td>
                   <td>{item.termsVersion}</td>
                   <td><strong>{item.confirmationNo}</strong></td>
                   <td><button className="button button-secondary button-compact" onClick={() => setSelected(item)}>조회</button></td>
@@ -65,15 +66,17 @@ export default function MyConsentPage() {
             <div>
               <p className="eyebrow">CONSENT CERTIFICATE</p>
               <h3>{selected.termsTitle}</h3>
-              <p className="muted">확인번호 {selected.confirmationNo} · 버전 {selected.termsVersion} · {new Date(selected.acceptedAt).toLocaleString("ko-KR")}</p>
+              <p className="muted">확인번호 {selected.confirmationNo} · 앱 {selected.appVersion ? `V${selected.appVersion}` : "기록 없음"} · 약관 {selected.termsVersion} · {new Date(selected.acceptedAt).toLocaleString("ko-KR")}</p>
             </div>
             <button className="button button-secondary button-compact" onClick={() => window.print()}>확인증 인쇄</button>
           </div>
           <div className="metric-grid">
-            <article className="metric-card"><span>이용조건 해시</span><strong style={{fontSize:12,wordBreak:"break-all"}}>{selected.termsHash}</strong></article>
+            <article className="metric-card"><span>동의 당시 앱 버전</span><strong>{selected.appVersion ? `V${selected.appVersion}` : "기록 없음"}</strong></article>
+            <article className="metric-card"><span>이용조건 버전</span><strong>{selected.termsVersion}</strong></article>
             <article className="metric-card"><span>개인정보 안내 버전</span><strong>{selected.privacyNoticeVersion}</strong></article>
             <article className="metric-card"><span>인증 방식</span><strong style={{fontSize:14}}>{selected.authenticationMethod}</strong></article>
           </div>
+          <article className="metric-card"><span>이용조건 해시</span><strong style={{fontSize:12,wordBreak:"break-all"}}>{selected.termsHash}</strong></article>
           <article>
             <h4>{selected.termsTitle}</h4>
             <pre style={{whiteSpace:"pre-wrap",lineHeight:1.65,padding:16,border:"1px solid #dce2e8",borderRadius:12,background:"#fbfcfd"}}>{selected.termsContent}</pre>

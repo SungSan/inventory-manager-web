@@ -1,3 +1,4 @@
+import { APP_VERSION } from "@/lib/app-version";
 import { getSupabaseClient, isDemoMode } from "@/lib/supabase";
 
 export interface LegalDocumentVersion {
@@ -24,6 +25,7 @@ export interface UserAccessStatus {
   pinResetRequired: boolean;
   termsAcceptanceRequired: boolean;
   latestTermsVersion?: string;
+  latestAppVersion?: string;
   latestTermsAcceptedAt?: string;
   accessReady: boolean;
   terms: LegalDocumentVersion;
@@ -37,6 +39,7 @@ export interface ConsentCompletionResult {
   confirmationNo?: string;
   acceptedAt?: string;
   termsVersion?: string;
+  appVersion?: string;
   errorCode?: string;
   message?: string;
   lockedUntil?: string;
@@ -46,6 +49,7 @@ export interface ConsentCompletionResult {
 export interface TermsAcceptanceReceipt {
   id: string;
   confirmationNo: string;
+  appVersion?: string;
   termsVersion: string;
   termsHash: string;
   termsTitle: string;
@@ -73,8 +77,10 @@ export interface AdminUserSecurityStatus {
   pinResetRequired: boolean;
   latestTermsAccepted: boolean;
   latestTermsVersion?: string;
+  latestAppVersion?: string;
   latestTermsAcceptedAt?: string;
   termsAcceptanceRequired: boolean;
+  lastSignInAt?: string;
   disabledAt?: string;
   disableReason?: string;
   deletedAt?: string;
@@ -113,6 +119,15 @@ function mapDocument(value: unknown): LegalDocumentVersion {
   };
 }
 
+function isMissingRpcError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  const message = String(error.message ?? "").toLowerCase();
+  return error.code === "PGRST202"
+    || error.code === "42883"
+    || message.includes("could not find the function")
+    || message.includes("function") && message.includes("does not exist");
+}
+
 export async function getUserAccessStatus(): Promise<UserAccessStatus> {
   if (isDemoMode()) {
     return {
@@ -126,6 +141,7 @@ export async function getUserAccessStatus(): Promise<UserAccessStatus> {
       pinResetRequired: false,
       termsAcceptanceRequired: false,
       latestTermsVersion: "3.9.0",
+      latestAppVersion: APP_VERSION,
       accessReady: true,
       terms: { version: "3.9.0", title: "SAN WMS 프로그램 이용조건 및 권리 안내", content: "", contentHash: "", effectiveAt: "" },
       privacyNotice: { version: "3.9.0", title: "본인확인 및 동의 기록의 수집·이용 안내", content: "", contentHash: "", effectiveAt: "" },
@@ -150,6 +166,7 @@ export async function getUserAccessStatus(): Promise<UserAccessStatus> {
     pinResetRequired: Boolean(row.pin_reset_required),
     termsAcceptanceRequired: Boolean(row.terms_acceptance_required),
     latestTermsVersion: optionalText(row.latest_terms_version),
+    latestAppVersion: optionalText(row.latest_app_version),
     latestTermsAcceptedAt: optionalText(row.latest_terms_accepted_at),
     accessReady: Boolean(row.access_ready),
     terms: mapDocument(row.terms),
@@ -165,16 +182,30 @@ export async function completeUserIdentityAndConsent(input: {
   termsChecked: boolean;
   privacyChecked: boolean;
 }): Promise<ConsentCompletionResult> {
-  const { data, error } = await client().rpc("complete_user_identity_and_consent", {
+  const v2Args = {
     p_entered_name: input.enteredName,
     p_new_pin: input.newPin ?? "",
     p_pin_confirm: input.pinConfirm ?? "",
     p_final_pin: input.finalPin,
     p_terms_checked: input.termsChecked,
     p_privacy_checked: input.privacyChecked,
-  });
-  if (error) throw new Error(error.message);
-  const row = record(data);
+    p_app_version: APP_VERSION,
+  };
+
+  let response = await client().rpc("complete_user_identity_and_consent_v2", v2Args);
+  if (response.error && isMissingRpcError(response.error)) {
+    response = await client().rpc("complete_user_identity_and_consent", {
+      p_entered_name: input.enteredName,
+      p_new_pin: input.newPin ?? "",
+      p_pin_confirm: input.pinConfirm ?? "",
+      p_final_pin: input.finalPin,
+      p_terms_checked: input.termsChecked,
+      p_privacy_checked: input.privacyChecked,
+    });
+  }
+
+  if (response.error) throw new Error(response.error.message);
+  const row = record(response.data);
   return {
     ok: Boolean(row.ok),
     accessReady: row.access_ready == null ? undefined : Boolean(row.access_ready),
@@ -182,6 +213,7 @@ export async function completeUserIdentityAndConsent(input: {
     confirmationNo: optionalText(row.confirmation_no),
     acceptedAt: optionalText(row.accepted_at),
     termsVersion: optionalText(row.terms_version),
+    appVersion: optionalText(row.app_version),
     errorCode: optionalText(row.error_code),
     message: optionalText(row.message),
     lockedUntil: optionalText(row.locked_until),
@@ -191,13 +223,19 @@ export async function completeUserIdentityAndConsent(input: {
 
 export async function getMyTermsAcceptances(): Promise<TermsAcceptanceReceipt[]> {
   if (isDemoMode()) return [];
-  const { data, error } = await client().rpc("get_my_terms_acceptances");
-  if (error) throw new Error(error.message);
-  return (Array.isArray(data) ? data : []).map((value) => {
+
+  let response = await client().rpc("get_my_terms_acceptances_v2");
+  if (response.error && isMissingRpcError(response.error)) {
+    response = await client().rpc("get_my_terms_acceptances");
+  }
+  if (response.error) throw new Error(response.error.message);
+
+  return (Array.isArray(response.data) ? response.data : []).map((value) => {
     const row = record(value);
     return {
       id: text(row.id),
       confirmationNo: text(row.confirmation_no),
+      appVersion: optionalText(row.app_version),
       termsVersion: text(row.terms_version),
       termsHash: text(row.terms_hash),
       termsTitle: text(row.terms_title),
@@ -232,8 +270,10 @@ export async function listAdminUserSecurityStatus(): Promise<AdminUserSecuritySt
       pinResetRequired: Boolean(row.pin_reset_required),
       latestTermsAccepted: Boolean(row.latest_terms_accepted),
       latestTermsVersion: optionalText(row.latest_terms_version),
+      latestAppVersion: optionalText(row.latest_app_version),
       latestTermsAcceptedAt: optionalText(row.latest_terms_accepted_at),
       termsAcceptanceRequired: Boolean(row.terms_acceptance_required),
+      lastSignInAt: optionalText(row.last_sign_in_at),
       disabledAt: optionalText(row.disabled_at),
       disableReason: optionalText(row.disable_reason),
       deletedAt: optionalText(row.deleted_at),
