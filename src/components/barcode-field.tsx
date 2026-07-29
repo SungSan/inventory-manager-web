@@ -8,6 +8,7 @@ import {
   isValidLocationBarcodeFormat,
   normalizeLocationBarcodeInput,
 } from "@/lib/location-barcode";
+import { getSupabaseClient } from "@/lib/supabase";
 
 type BarcodeInputKind = "generic" | "location" | "mixed";
 
@@ -23,6 +24,21 @@ function isResolvedLocationMatch(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
   const match = value as { target?: { type?: string; location?: unknown } };
   return match.target?.type === "location" && Boolean(match.target.location);
+}
+
+async function activeLocationCodeExists(locationCode: string): Promise<boolean> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return false;
+
+  const { data, error } = await supabase
+    .from("locations")
+    .select("id")
+    .eq("location_code", locationCode)
+    .eq("active", true)
+    .limit(1);
+
+  if (error) return false;
+  return Boolean(data?.length);
 }
 
 export function BarcodeField({
@@ -47,9 +63,17 @@ export function BarcodeField({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const composingRef = useRef(false);
   const pendingEnterRef = useRef(false);
+  const pendingCompositionTimerRef = useRef<number | null>(null);
   const submittingRef = useRef(false);
   const lastSubmissionRef = useRef({ value: "", at: 0 });
   const inputKind = useMemo(() => inferBarcodeInputKind(label, placeholder), [label, placeholder]);
+
+  const clearPendingCompositionTimer = useCallback(() => {
+    if (pendingCompositionTimerRef.current !== null) {
+      window.clearTimeout(pendingCompositionTimerRef.current);
+      pendingCompositionTimerRef.current = null;
+    }
+  }, []);
 
   // 상위 화면에서 확정된 상품/로케이션 바코드를 입력창에도 그대로 유지합니다.
   useEffect(() => {
@@ -63,6 +87,8 @@ export function BarcodeField({
     }
   }, [autoFocus, disabled, resetToken]);
 
+  useEffect(() => () => clearPendingCompositionTimer(), [clearPendingCompositionTimer]);
+
   const finalValue = useCallback(async (raw: string): Promise<string> => {
     if (inputKind === "location") return normalizeLocationBarcodeInput(raw);
 
@@ -70,8 +96,7 @@ export function BarcodeField({
       const locationCandidate = normalizeLocationBarcodeInput(raw);
       if (isValidLocationBarcodeFormat(locationCandidate)) {
         try {
-          // 혼합 입력창은 locations 테이블의 코드 검색이 아니라 실제 바코드 판별 RPC로 검증합니다.
-          // 등록된 LOC 바코드 또는 LOC 코드로 확인된 경우에만 변환값을 사용합니다.
+          // 혼합 입력창은 먼저 기존 SAN WMS 바코드 판별 RPC로 LOC 여부를 확인합니다.
           const matches = await resolveBarcodeCandidates(
             locationCandidate,
             "location",
@@ -79,11 +104,15 @@ export function BarcodeField({
           );
           if (matches.some(isResolvedLocationMatch)) return locationCandidate;
         } catch {
-          // LOC 후보 확인이 실패하면 상품 바코드 원문 처리 흐름을 유지합니다.
+          // RPC 확인 실패 시 아래의 정확한 LOC 코드 확인으로 한 번 더 검증합니다.
         }
+
+        // LOC 코드 자체를 기본 바코드로 쓰는 로케이션도 놓치지 않습니다.
+        if (await activeLocationCodeExists(locationCandidate)) return locationCandidate;
       }
     }
 
+    // 상품 바코드와 일반 입력은 원본을 유지합니다.
     return raw.trim();
   }, [inputKind]);
 
@@ -130,27 +159,46 @@ export function BarcodeField({
               composingRef.current = true;
             }}
             onCompositionEnd={(event) => {
+              const rawValue = event.currentTarget.value;
               composingRef.current = false;
-              const completed = inputKind === "location"
-                ? normalizeLocationBarcodeInput(event.currentTarget.value)
-                : event.currentTarget.value;
-              setDraft(completed);
+              setDraft(inputKind === "location" ? normalizeLocationBarcodeInput(rawValue) : rawValue);
 
               if (pendingEnterRef.current) {
                 pendingEnterRef.current = false;
-                window.setTimeout(() => void submit(inputRef.current?.value ?? completed), 0);
+                clearPendingCompositionTimer();
+                window.setTimeout(() => void submit(rawValue), 0);
               }
             }}
             onKeyDown={(event) => {
               if (event.key !== "Enter") return;
               event.preventDefault();
+              const rawValue = event.currentTarget.value;
 
               if (composingRef.current || event.nativeEvent.isComposing || event.keyCode === 229) {
                 pendingEnterRef.current = true;
+                clearPendingCompositionTimer();
+
+                // 일부 Android HID/한글 IME는 Enter 뒤 compositionend를 보내지 않는다.
+                // 짧게 기다린 뒤 DOM에 확정된 최종 문자열을 한 번만 제출한다.
+                pendingCompositionTimerRef.current = window.setTimeout(() => {
+                  pendingCompositionTimerRef.current = null;
+                  if (!pendingEnterRef.current) return;
+                  pendingEnterRef.current = false;
+                  composingRef.current = false;
+                  void submit(inputRef.current?.value ?? rawValue);
+                }, 120);
                 return;
               }
 
-              void submit(event.currentTarget.value);
+              void submit(rawValue);
+            }}
+            onKeyUp={(event) => {
+              if (event.key !== "Enter" || !pendingEnterRef.current || event.nativeEvent.isComposing) return;
+              const rawValue = event.currentTarget.value;
+              pendingEnterRef.current = false;
+              composingRef.current = false;
+              clearPendingCompositionTimer();
+              void submit(rawValue);
             }}
           />
           <button
