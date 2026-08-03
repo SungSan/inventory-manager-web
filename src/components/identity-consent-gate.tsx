@@ -1,13 +1,90 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { completeUserIdentityAndConsent, getUserAccessStatus, type UserAccessStatus } from "@/lib/identity-api";
-import { APP_VERSION_LABEL } from "@/lib/app-version";
+import {
+  completeUserIdentityAndConsent,
+  getUserAccessStatus,
+  type ConsentCompletionResult,
+  type UserAccessStatus,
+} from "@/lib/identity-api";
+import {
+  APP_VERSION,
+  APP_VERSION_LABEL,
+  hasSameSemanticMajor,
+} from "@/lib/app-version";
 import { getSupabaseClient } from "@/lib/supabase";
 import styles from "./identity-consent-gate.module.css";
 
 function digitsOnly(value: string): string {
   return value.replace(/\D/g, "").slice(0, 6);
+}
+
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function optionalText(value: unknown): string | undefined {
+  return value == null || String(value) === "" ? undefined : String(value);
+}
+
+async function completeConsentWithSameMajorFallback(
+  status: UserAccessStatus,
+  input: {
+    enteredName: string;
+    newPin?: string;
+    pinConfirm?: string;
+    finalPin: string;
+    termsChecked: boolean;
+    privacyChecked: boolean;
+  },
+): Promise<ConsentCompletionResult> {
+  const result = await completeUserIdentityAndConsent(input);
+
+  const mayUseSameMajorFallback =
+    !result.ok
+    && result.errorCode === "LEGAL_VERSION_MISMATCH"
+    && hasSameSemanticMajor(
+      APP_VERSION,
+      status.terms.version,
+      status.privacyNotice.version,
+    );
+
+  if (!mayUseSameMajorFallback) return result;
+
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error("Supabase 연결 설정을 확인하세요.");
+
+  // 구버전 서버 함수가 정확한 patch/minor 일치를 요구하는 동안만 사용하는 긴급 호환 경로입니다.
+  // 메이저가 같은 활성 원문에 한해 기존 동의 RPC를 호출하며, 다른 메이저는 절대 우회하지 않습니다.
+  const { data, error } = await supabase.rpc("complete_user_identity_and_consent", {
+    p_entered_name: input.enteredName,
+    p_new_pin: input.newPin ?? "",
+    p_pin_confirm: input.pinConfirm ?? "",
+    p_final_pin: input.finalPin,
+    p_terms_checked: input.termsChecked,
+    p_privacy_checked: input.privacyChecked,
+  });
+
+  if (error) throw new Error(error.message);
+
+  const row = record(data);
+  return {
+    ok: Boolean(row.ok),
+    accessReady: row.access_ready == null ? undefined : Boolean(row.access_ready),
+    serviceAccount: row.service_account == null ? undefined : Boolean(row.service_account),
+    confirmationNo: optionalText(row.confirmation_no),
+    acceptedAt: optionalText(row.accepted_at),
+    termsVersion: optionalText(row.terms_version) ?? status.terms.version,
+    appVersion: APP_VERSION,
+    errorCode: optionalText(row.error_code),
+    message: optionalText(row.message),
+    lockedUntil: optionalText(row.locked_until),
+    remainingAttempts: row.remaining_attempts == null
+      ? undefined
+      : Number(row.remaining_attempts),
+  };
 }
 
 export function IdentityConsentGate({ children }: { children: React.ReactNode }) {
@@ -21,7 +98,12 @@ export function IdentityConsentGate({ children }: { children: React.ReactNode })
   const [termsChecked, setTermsChecked] = useState(false);
   const [privacyChecked, setPrivacyChecked] = useState(false);
   const [error, setError] = useState("");
-  const [receipt, setReceipt] = useState<{ confirmationNo: string; acceptedAt: string; termsVersion: string; appVersion: string } | null>(null);
+  const [receipt, setReceipt] = useState<{
+    confirmationNo: string;
+    acceptedAt: string;
+    termsVersion: string;
+    appVersion: string;
+  } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -68,7 +150,7 @@ export function IdentityConsentGate({ children }: { children: React.ReactNode })
     setSubmitting(true);
     setError("");
     try {
-      const result = await completeUserIdentityAndConsent({
+      const result = await completeConsentWithSameMajorFallback(status, {
         enteredName,
         newPin: needNewPin ? newPin : undefined,
         pinConfirm: needNewPin ? pinConfirm : undefined,
@@ -132,6 +214,15 @@ export function IdentityConsentGate({ children }: { children: React.ReactNode })
     );
   }
 
+  const sameMajorDocuments = hasSameSemanticMajor(
+    APP_VERSION,
+    status.terms.version,
+    status.privacyNotice.version,
+  );
+  const exactDocumentMatch =
+    APP_VERSION === status.terms.version
+    && APP_VERSION === status.privacyNotice.version;
+
   return (
     <main className={styles.page}>
       <form className={styles.card} onSubmit={submit}>
@@ -190,6 +281,9 @@ export function IdentityConsentGate({ children }: { children: React.ReactNode })
         </section>
 
         <p className={styles.notice}>현재 실행 중인 SAN WMS 앱 버전 <strong>{APP_VERSION_LABEL}</strong>과 서버의 활성 이용조건 문서 버전 <strong>{status.terms.version}</strong>이 동의 기록에 각각 저장됩니다.</p>
+        {!exactDocumentMatch && sameMajorDocuments ? (
+          <p className={styles.notice}>앱과 활성 문서의 세부 버전은 다르지만 모두 동일한 V{APP_VERSION.split(".")[0]} 메이저 버전이므로 정상적으로 동의할 수 있습니다.</p>
+        ) : null}
 
         <section className={styles.documentGrid}>
           <article className={styles.document}>
