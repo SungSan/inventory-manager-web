@@ -16,6 +16,8 @@ import {
 } from "@/lib/stocktake-api";
 import styles from "./stocktakes.module.css";
 
+type StocktakeScopeType = "ALL" | "ZONE" | "LOCATIONS" | "DUE" | "DUE_SOON" | "REVIEW";
+
 const statusLabel: Record<InventoryCountStatus, string> = {
   COMPLETE: "실사 완료",
   DUE_SOON: "재실사 임박",
@@ -102,7 +104,8 @@ function cycleDescription(row: InventoryCountLocationStatus): string {
 
 function StocktakesContent() {
   const [dashboard, setDashboard] = useState<InventoryCountDashboard | null>(null);
-  const [scopeType, setScopeType] = useState<"ALL" | "ZONE" | "LOCATIONS" | "DUE">("ALL");
+  const [reviewLocationIds, setReviewLocationIds] = useState<Set<string>>(new Set());
+  const [scopeType, setScopeType] = useState<StocktakeScopeType>("ALL");
   const [zone, setZone] = useState("");
   const [locationId, setLocationId] = useState("");
   const [note, setNote] = useState("");
@@ -114,13 +117,17 @@ function StocktakesContent() {
 
   const load = useCallback(async () => {
     try {
-      // 프로필 RPC가 먼저 미처리 이동 이력을 반영한 뒤 대시보드를 읽습니다.
       const profiles = await getInventoryCycleProfiles();
       const [source, mapStates] = await Promise.all([
         getInventoryCountDashboard(),
         listLocationMapStates(),
       ]);
       const unavailableIds = new Set(mapStates.filter((row) => row.unavailable).map((row) => row.locationId));
+      setReviewLocationIds(new Set(
+        mapStates
+          .filter((row) => !row.unavailable && row.transferMovementCountSinceCount > 0)
+          .map((row) => row.locationId),
+      ));
       setDashboard(availableDashboard(applyCycleProfiles(source, profiles), unavailableIds));
       setError("");
     } catch (cause) {
@@ -136,6 +143,20 @@ function StocktakesContent() {
     [dashboard],
   );
 
+  const dueSoonLocationIds = useMemo(
+    () => (dashboard?.locations ?? [])
+      .filter((row) => row.countStatus === "DUE_SOON" && !row.openSessionId)
+      .map((row) => row.locationId),
+    [dashboard],
+  );
+
+  const reviewTargetLocationIds = useMemo(
+    () => (dashboard?.locations ?? [])
+      .filter((row) => reviewLocationIds.has(row.locationId) && !row.openSessionId)
+      .map((row) => row.locationId),
+    [dashboard, reviewLocationIds],
+  );
+
   const visibleLocations = useMemo(() => {
     const normalized = keyword.trim().toUpperCase();
     return (dashboard?.locations ?? []).filter((row) => {
@@ -148,9 +169,40 @@ function StocktakesContent() {
   async function createSession() {
     if (scopeType === "ZONE" && !zone) { setError("실사할 구역을 선택하세요."); return; }
     if (scopeType === "LOCATIONS" && !locationId) { setError("실사할 로케이션을 선택하세요."); return; }
+
+    let apiScopeType: "ALL" | "ZONE" | "LOCATIONS" | "DUE" =
+      scopeType === "DUE_SOON" || scopeType === "REVIEW" ? "LOCATIONS" : scopeType;
+    let locationIds: string[] | undefined;
+    let scopeNote = note;
+
+    if (scopeType === "DUE_SOON") {
+      if (dueSoonLocationIds.length === 0) {
+        setError("현재 재실사 임박 상태이면서 다른 실사에 포함되지 않은 로케이션이 없습니다.");
+        return;
+      }
+      locationIds = dueSoonLocationIds;
+      scopeNote = ["재실사 임박 대상", note.trim()].filter(Boolean).join(" · ");
+    } else if (scopeType === "REVIEW") {
+      if (reviewTargetLocationIds.length === 0) {
+        setError("현재 확인 필요 상태이면서 다른 실사에 포함되지 않은 로케이션이 없습니다.");
+        return;
+      }
+      locationIds = reviewTargetLocationIds;
+      scopeNote = ["확인 필요 대상 · 최근 완료 실사 후 재고이관 발생", note.trim()]
+        .filter(Boolean)
+        .join(" · ");
+    } else if (scopeType === "LOCATIONS") {
+      locationIds = [locationId];
+    }
+
     setBusy(true); setError(""); setMessage("");
     try {
-      const result = await createInventoryCountSession({ scopeType, zone: scopeType === "ZONE" ? zone : undefined, locationIds: scopeType === "LOCATIONS" ? [locationId] : undefined, note });
+      const result = await createInventoryCountSession({
+        scopeType: apiScopeType,
+        zone: scopeType === "ZONE" ? zone : undefined,
+        locationIds,
+        note: scopeNote,
+      });
       setMessage(`${result.countNo} · ${result.targetCount.toLocaleString()}개 로케이션 실사를 생성했습니다.`);
       setNote(""); await load();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "재고실사 작업을 생성하지 못했습니다."); }
@@ -176,7 +228,7 @@ function StocktakesContent() {
       <section className="panel">
         <div className="section-heading"><div><p className="eyebrow">NEW COUNT</p><h3>신규 재고실사 생성</h3></div></div>
         <div className={styles.createGrid}>
-          <label>실사 범위<select value={scopeType} onChange={(event) => setScopeType(event.target.value as typeof scopeType)} disabled={busy}><option value="ALL">전체 사용 가능 로케이션(수동 전체)</option><option value="DUE">자동 주기 도래·최초 미실사만</option><option value="ZONE">구역별 실사</option><option value="LOCATIONS">특정 로케이션(수동)</option></select></label>
+          <label>실사 범위<select value={scopeType} onChange={(event) => setScopeType(event.target.value as StocktakeScopeType)} disabled={busy}><option value="ALL">전체 사용 가능 로케이션(수동 전체)</option><option value="DUE">자동 주기 도래·최초 미실사만</option><option value="DUE_SOON">재실사 임박만 ({dueSoonLocationIds.length.toLocaleString()} LOC)</option><option value="REVIEW">확인 필요만 ({reviewTargetLocationIds.length.toLocaleString()} LOC)</option><option value="ZONE">구역별 실사</option><option value="LOCATIONS">특정 로케이션(수동)</option></select>{scopeType === "REVIEW" ? <small className="muted">확인 필요는 최근 완료 실사 이후 재고이관 이력이 1건 이상 발생한 LOC입니다.</small> : null}</label>
           {scopeType === "ZONE" ? <label>구역<select value={zone} onChange={(event) => setZone(event.target.value)} disabled={busy}><option value="">구역 선택</option>{zones.map((item) => <option key={item} value={item}>{item}</option>)}</select></label> : null}
           {scopeType === "LOCATIONS" ? <label>로케이션<select value={locationId} onChange={(event) => setLocationId(event.target.value)} disabled={busy}><option value="">로케이션 선택</option>{(dashboard?.locations ?? []).map((item) => <option key={item.locationId} value={item.locationId}>{item.locationCode} · {statusLabel[item.countStatus]}</option>)}</select></label> : null}
           <label className={styles.noteField}>메모(선택)<input value={note} onChange={(event) => setNote(event.target.value)} placeholder="예: 고회전 LOC 정기 실사" disabled={busy} /></label>
