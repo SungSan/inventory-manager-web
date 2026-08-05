@@ -170,7 +170,7 @@ function StocktakesContent() {
     if (scopeType === "ZONE" && !zone) { setError("실사할 구역을 선택하세요."); return; }
     if (scopeType === "LOCATIONS" && !locationId) { setError("실사할 로케이션을 선택하세요."); return; }
 
-    let apiScopeType: "ALL" | "ZONE" | "LOCATIONS" | "DUE" =
+    const apiScopeType: "ALL" | "ZONE" | "LOCATIONS" | "DUE" =
       scopeType === "DUE_SOON" || scopeType === "REVIEW" ? "LOCATIONS" : scopeType;
     let locationIds: string[] | undefined;
     let scopeNote = note;
