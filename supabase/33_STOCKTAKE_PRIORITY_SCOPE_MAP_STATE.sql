@@ -58,9 +58,11 @@ begin
   into v_result
   from public.locations l
   left join lateral (
-    select item as row_value
-    from jsonb_array_elements(coalesce(v_dashboard -> 'locations', '[]'::jsonb)) item
-    where item ->> 'location_id' = l.id::text
+    select dashboard_item as row_value
+    from jsonb_array_elements(
+      coalesce(v_dashboard -> 'locations', '[]'::jsonb)
+    ) as dashboard_items(dashboard_item)
+    where dashboard_item ->> 'location_id' = l.id::text
     limit 1
   ) dashboard_location on true
   left join lateral (
