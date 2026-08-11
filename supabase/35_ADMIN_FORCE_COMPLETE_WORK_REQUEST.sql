@@ -4,7 +4,7 @@
 -- 원칙
 --   * 원 요청 수량은 절대 덮어쓰지 않는다.
 --   * 실제 스캔 처리된 수량만 재고 차감/출고 수량으로 인정한다.
---   * 미처리 수량은 명세서와 감사정보에 남긴다.
+--   * 미처리 수량과 0개 출고 품목도 명세서와 감사정보에 남긴다.
 --   * 관리자만 IN_PROGRESS / PARTIAL 업무를 강제 완료할 수 있다.
 --   * 강제 완료 사유는 필수다.
 --   * 100% 정상 처리 업무는 기존 자동 완료 경로를 사용한다.
@@ -41,6 +41,29 @@ begin
   end if;
 end $$;
 
+-- 향후 정상 스캔 완료도 completion_type=NORMAL 이 명확히 남도록 한다.
+create or replace function public.set_work_request_completion_type()
+returns trigger
+language plpgsql
+security definer
+set search_path=public
+as $$
+begin
+  if new.status='COMPLETED'
+     and old.status is distinct from 'COMPLETED'
+     and new.completion_type is null then
+    new.completion_type:='NORMAL';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_work_request_set_completion_type on public.work_requests;
+create trigger trg_work_request_set_completion_type
+before update of status on public.work_requests
+for each row
+execute function public.set_work_request_completion_type();
+
 alter table public.work_request_documents
   add column if not exists completion_type text,
   add column if not exists requested_total_qty integer,
@@ -51,6 +74,14 @@ alter table public.work_request_documents
 alter table public.work_request_document_items
   add column if not exists requested_qty integer,
   add column if not exists unfulfilled_qty integer;
+
+-- 강제 완료에서는 실제 출고 0개 품목도 요청/미출고 증빙으로 남겨야 한다.
+-- 이 제약 변경은 명세서 스냅샷 테이블에만 적용되며 재고 트랜잭션 수량 제약에는 영향이 없다.
+alter table public.work_request_document_items
+  drop constraint if exists work_request_document_items_qty_check;
+
+alter table public.work_request_document_items
+  add constraint work_request_document_items_qty_check check (qty >= 0);
 
 update public.work_request_documents
 set completion_type = coalesce(completion_type, 'NORMAL'),
@@ -114,6 +145,7 @@ from public.work_requests w where w.id=p_request_id;
 $$;
 
 -- 명세서는 실제 processed_qty만 출고 수량으로 기록하면서 요청/미출고 수량도 스냅샷으로 남긴다.
+-- 한 번도 출고되지 않은 품목도 actual=0으로 반드시 남긴다.
 create or replace function public.finalize_work_request_document(p_request_id uuid)
 returns uuid
 language plpgsql
@@ -156,7 +188,7 @@ begin
     v_no,p_request_id,current_date,v_request.vendor_name,v_request.vendor_contact,v_request.vendor_phone,v_request.vendor_address,v_request.purpose,v_request.note,
     v_request.requester_id,v_request.requester_login_id_snapshot,v_request.requester_name_snapshot,v_request.assigned_to,
     coalesce(v_request.assigned_name_snapshot,public.user_label(v_request.assigned_to)),
-    (select count(*) from public.work_request_items where work_request_id=p_request_id and processed_qty>0),
+    (select count(*) from public.work_request_items where work_request_id=p_request_id),
     v_processed_total,
     coalesce(v_request.completion_type,'NORMAL'),v_requested_total,v_unfulfilled_total,
     v_request.force_complete_reason,v_request.force_completed_by_name_snapshot
@@ -164,7 +196,7 @@ begin
 
   for v_item in
     select * from public.work_request_items
-    where work_request_id=p_request_id and processed_qty>0
+    where work_request_id=p_request_id
     order by artist_snapshot,name_ver_snapshot
   loop
     v_line:=v_line+1;
@@ -380,10 +412,12 @@ for each row when (new.status='APPROVED')
 execute function public.reconcile_work_request_completion_after_change();
 
 -- 이미 100%인데 열린 상태로 남은 기존 건은 정상 완료로 보정한다.
+-- 완료시각은 SQL 실행시각이 아니라 가장 최근 스캔 또는 수정승인 시각을 우선 사용한다.
 do $$
 declare
   v_request public.work_requests%rowtype;
   v_doc uuid;
+  v_completed_at timestamptz;
 begin
   for v_request in
     select wr.* from public.work_requests wr
@@ -392,10 +426,26 @@ begin
       and not exists(select 1 from public.work_request_items i where i.work_request_id=wr.id and i.processed_qty<i.requested_qty)
     for update
   loop
+    select greatest(
+      coalesce((select max(s.scanned_at) from public.work_request_scans s where s.work_request_id=v_request.id),'-infinity'::timestamptz),
+      coalesce((select max(c.decided_at) from public.work_request_change_requests c where c.work_request_id=v_request.id and c.status='APPROVED'),'-infinity'::timestamptz)
+    ) into v_completed_at;
+
+    if v_completed_at='-infinity'::timestamptz then
+      v_completed_at:=now();
+    end if;
+
     update public.work_requests
-    set status='COMPLETED',completed_at=coalesce(completed_at,now()),completion_type=coalesce(completion_type,'NORMAL'),updated_at=now()
+    set status='COMPLETED',completed_at=coalesce(completed_at,v_completed_at),completion_type=coalesce(completion_type,'NORMAL'),updated_at=now()
     where id=v_request.id;
+
     v_doc:=public.finalize_work_request_document(v_request.id);
+
+    if not exists(select 1 from public.work_request_notifications where work_request_id=v_request.id and notification_type='WORK_COMPLETED') then
+      insert into public.work_request_notifications(work_request_id,user_id,notification_type,message,available_from)
+      values(v_request.id,v_request.requester_id,'WORK_COMPLETED',v_request.request_no||' 출고 작업이 완료되었습니다.',now());
+    end if;
+
     if not exists(select 1 from public.work_request_events where work_request_id=v_request.id and event_type='WORK_COMPLETED') then
       insert into public.work_request_events(work_request_id,event_type,actor_id,actor_name_snapshot,before_data,after_data,note)
       values(v_request.id,'WORK_COMPLETED',null,'SYSTEM',null,jsonb_build_object('document_id',v_doc),'기존 100% 처리 업무요청 상태 자동 보정');
@@ -408,6 +458,7 @@ revoke all on function public.admin_force_complete_work_request(uuid,text) from 
 grant execute on function public.admin_force_complete_work_request(uuid,text) to authenticated;
 
 revoke all on function public.reconcile_work_request_completion_after_change() from public,anon;
+revoke all on function public.set_work_request_completion_type() from public,anon;
 
 notify pgrst,'reload schema';
 commit;
