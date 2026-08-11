@@ -126,12 +126,13 @@ function WorkRequestDetailContent(){
   const canForceComplete=user?.role==="admin"&&(request.status==="IN_PROGRESS"||request.status==="PARTIAL")&&unfulfilledQty>0;
 
   function forceComplete(){
-    if(!canForceComplete)return;
+    const currentRequest=request;
+    if(!currentRequest||!canForceComplete)return;
     const reason=window.prompt("관리자 강제 완료 사유를 입력하세요.\n예: 실재고 부족 / 상품 불량 / 요청자 협의 / 출고 제외 / 기타","실재고 부족");
     if(!reason?.trim())return;
-    const confirmed=window.confirm(`요청 ${request.totalQty.toLocaleString()}개 중 실제 처리 ${processedQty.toLocaleString()}개만 출고 확정하고, 미처리 ${unfulfilledQty.toLocaleString()}개를 남긴 채 업무를 완료합니다.\n\n원 요청 수량은 변경되지 않으며 실제 처리 수량만 재고에서 차감됩니다. 계속할까요?`);
+    const confirmed=window.confirm(`요청 ${currentRequest.totalQty.toLocaleString()}개 중 실제 처리 ${processedQty.toLocaleString()}개만 출고 확정하고, 미처리 ${unfulfilledQty.toLocaleString()}개를 남긴 채 업무를 완료합니다.\n\n원 요청 수량은 변경되지 않으며 실제 처리 수량만 재고에서 차감됩니다. 계속할까요?`);
     if(!confirmed)return;
-    void run(()=>adminForceCompleteWorkRequest(request.id,reason.trim()),"관리자 판단으로 업무를 완료했습니다. 실제 처리 수량만 출고 확정되었습니다.");
+    void run(()=>adminForceCompleteWorkRequest(currentRequest.id,reason.trim()),"관리자 판단으로 업무를 완료했습니다. 실제 처리 수량만 출고 확정되었습니다.");
   }
 
   return <div className={`page-stack ${styles.page}`}>
