@@ -10,6 +10,7 @@ import { listProducts, resolveBarcodeCandidates, subscribeToInventory } from "@/
 import { isIntegerInputValue, numberOrZero, parseIntegerDraft, type NumberInputValue } from "@/lib/number-input";
 import type { Product, ResolvedBarcode } from "@/types/domain";
 import {
+  adminForceCompleteWorkRequest,
   adminVoidWorkRequest,
   approveWorkRequestChange,
   cancelWorkRequest,
@@ -119,19 +120,33 @@ function WorkRequestDetailContent(){
   const canStart=request.status==="SCHEDULED"&&(request.isCandidate||request.isAssigned||canManage);
   const canScan=(request.status==="IN_PROGRESS"||request.status==="PARTIAL")&&request.isAssigned;
   const pendingChanges=request.changeRequests.filter((item)=>item.status==="PENDING");
-  const progress=request.totalQty?Math.round(request.items.reduce((sum,item)=>sum+item.processedQty,0)/request.totalQty*100):0;
+  const processedQty=request.items.reduce((sum,item)=>sum+item.processedQty,0);
+  const unfulfilledQty=request.items.reduce((sum,item)=>sum+Math.max(0,item.requestedQty-item.processedQty),0);
+  const progress=request.totalQty?Math.round(processedQty/request.totalQty*100):0;
+  const canForceComplete=user?.role==="admin"&&(request.status==="IN_PROGRESS"||request.status==="PARTIAL")&&unfulfilledQty>0;
+
+  function forceComplete(){
+    if(!canForceComplete)return;
+    const reason=window.prompt("관리자 강제 완료 사유를 입력하세요.\n예: 실재고 부족 / 상품 불량 / 요청자 협의 / 출고 제외 / 기타","실재고 부족");
+    if(!reason?.trim())return;
+    const confirmed=window.confirm(`요청 ${request.totalQty.toLocaleString()}개 중 실제 처리 ${processedQty.toLocaleString()}개만 출고 확정하고, 미처리 ${unfulfilledQty.toLocaleString()}개를 남긴 채 업무를 완료합니다.\n\n원 요청 수량은 변경되지 않으며 실제 처리 수량만 재고에서 차감됩니다. 계속할까요?`);
+    if(!confirmed)return;
+    void run(()=>adminForceCompleteWorkRequest(request.id,reason.trim()),"관리자 판단으로 업무를 완료했습니다. 실제 처리 수량만 출고 확정되었습니다.");
+  }
 
   return <div className={`page-stack ${styles.page}`}>
     <section className="section-heading"><div><Link className="text-link" href="/work-requests">← 업무요청 목록</Link><p className="eyebrow">{request.requestNo}</p><h2>{request.vendorName}</h2><p className="muted">요청자 {request.requesterName} ({request.requesterLoginId}) · 담당 {request.assignedName||request.reservedUserName||"후보 선점 대기"}</p></div><span className="status-badge active">{statusLabel[request.status]}</span></section>
     {error?<p className="inline-error">{error}</p>:null}{message?<div className="feedback feedback-success"><strong>{message}</strong></div>:null}
 
-    <section className="metric-grid"><article className="metric-card"><span>요청 출고일</span><strong>{request.requestedShipDate}</strong></article><article className="metric-card"><span>처리 진행률</span><strong>{progress}%</strong></article><article className="metric-card"><span>요청 수량</span><strong>{request.totalQty.toLocaleString()}</strong></article><article className="metric-card"><span>처리 수량</span><strong>{request.items.reduce((sum,item)=>sum+item.processedQty,0).toLocaleString()}</strong></article></section>
+    <section className="metric-grid"><article className="metric-card"><span>요청 출고일</span><strong>{request.requestedShipDate}</strong></article><article className="metric-card"><span>처리 진행률</span><strong>{progress}%</strong></article><article className="metric-card"><span>요청 수량</span><strong>{request.totalQty.toLocaleString()}</strong></article><article className="metric-card"><span>처리 수량</span><strong>{processedQty.toLocaleString()}</strong></article></section>
+    {request.completionType==="ADMIN_FORCE"?<div className="feedback"><strong>관리자 강제 완료</strong><p>실제 출고 {Number(request.forceCompletedProcessedQty??processedQty).toLocaleString()} / 요청 {request.totalQty.toLocaleString()} · 미출고 {Number(request.forceCompletedUnfulfilledQty??unfulfilledQty).toLocaleString()}개</p><p>완료자 {request.forceCompletedByName||"관리자"} · 사유 {request.forceCompleteReason||"-"}</p></div>:null}
 
     <section className="panel page-stack">
       <div className="section-heading"><div><p className="eyebrow">REQUEST DETAIL</p><h3>요청 정보</h3></div><div className="action-row">
         {canEdit?<button className="button button-secondary button-compact" onClick={()=>setEditing(!editing)}>{editing?"수정 닫기":request.status==="SCHEDULED"?"요청 수정":"수정 승인 요청"}</button>:null}
         {request.isRequester&&request.status==="SCHEDULED"?<button className="button button-secondary button-compact" onClick={()=>{const reason=window.prompt("삭제 사유를 입력하세요.","요청 취소");if(reason!==null&&window.confirm("작업 시작 전 요청을 삭제할까요? 기록은 영구 보존됩니다."))void run(()=>cancelWorkRequest(request.id,reason),"요청을 삭제 상태로 변경했습니다.");}}>요청 삭제</button>:null}
         {canStart?<button className="button button-primary button-compact" onClick={()=>void run(()=>startWorkRequest(request.id),"작업을 시작하고 담당자로 배정되었습니다.")}>작업 시작</button>:null}
+        {canForceComplete?<button className="button button-secondary button-compact" onClick={forceComplete} disabled={busy}>관리자 강제 완료</button>:null}
         {user?.role==="admin"&&request.status!=="VOIDED"?<button className="button button-secondary button-compact" onClick={()=>{const reason=window.prompt("관리자 무효 처리 사유를 입력하세요.","");if(reason)void run(()=>adminVoidWorkRequest(request.id,reason),"업무요청을 무효 처리했습니다. 원본과 작업이력은 보존됩니다.");}}>관리자 무효</button>:null}
       </div></div>
       {!editing?<div className={styles.formGrid}><div><small className="muted">외부업체</small><p><strong>{request.vendorName}</strong></p></div><div><small className="muted">담당자·연락처</small><p>{request.vendorContact||"-"} · {request.vendorPhone||"-"}</p></div><div className={styles.spanTwo}><small className="muted">주소</small><p>{request.vendorAddress||"-"}</p></div><div><small className="muted">출고 목적</small><p>{request.purpose||"-"}</p></div><div><small className="muted">비고</small><p>{request.note||"-"}</p></div></div>:<>
