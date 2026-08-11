@@ -97,6 +97,8 @@ function WorkRequestDocumentContent() {
     return <section className="panel"><h2>출고명세서를 열 수 없습니다.</h2>{error ? <p className="inline-error">{error}</p> : null}<Link className="button button-secondary" href="/work-requests">업무요청 목록</Link></section>;
   }
 
+  const forced = shipmentDocument.completionType === "ADMIN_FORCE";
+
   return (
     <div className={styles.documentPage}>
       <div className={styles.documentActions} data-no-print="true">
@@ -111,6 +113,7 @@ function WorkRequestDocumentContent() {
           <label>출고 담당 *<input value={shipmentManagerName} onChange={(event) => setShipmentManagerName(event.target.value)} placeholder="예: 김물류" disabled={saving} /></label>
         </div>
         <p className="muted">작성자는 요청자, 출고 담당은 실제 처리 작업자 이름으로 자동 입력되며 필요하면 출력 전에 수정할 수 있습니다.</p>
+        {forced ? <div className="feedback"><strong>관리자 강제 완료 명세서</strong><p>요청 {shipmentDocument.requestedTotalQty.toLocaleString()} / 실제 출고 {shipmentDocument.totalQty.toLocaleString()} / 미출고 {shipmentDocument.unfulfilledTotalQty.toLocaleString()}개 · 사유 {shipmentDocument.forceCompleteReason || "-"}</p></div> : null}
         {message ? <div className="feedback feedback-success"><strong>{message}</strong></div> : null}
         {error ? <p className="inline-error">{error}</p> : null}
       </section>
@@ -127,10 +130,11 @@ function WorkRequestDocumentContent() {
           <div className={styles.infoLabel}>출고지</div><div>사운드웨이브</div><div className={styles.infoLabel}>출고 목적</div><div>{shipmentDocument.purpose || "-"}</div>
           <div className={styles.infoLabel}>도착지</div><div>{shipmentDocument.vendorName}</div><div className={styles.infoLabel}>인수인·연락처</div><div>{[shipmentDocument.vendorContact, shipmentDocument.vendorPhone].filter(Boolean).join(" · ") || "-"}</div>
           <div className={styles.infoLabel}>도착지 주소</div><div className={styles.infoWide}>{shipmentDocument.vendorAddress || "-"}</div>
+          {forced ? <><div className={styles.infoLabel}>완료 방식</div><div>관리자 강제 완료</div><div className={styles.infoLabel}>미출고 수량</div><div>{shipmentDocument.unfulfilledTotalQty.toLocaleString()} EA</div></> : null}
         </section>
 
         <table className={styles.documentTable}>
-          <thead><tr><th>No</th><th>품목명</th><th>Barcode</th><th>유통 code</th><th>Master code</th><th>EA</th><th>비고</th></tr></thead>
+          <thead><tr><th>No</th><th>품목명</th><th>Barcode</th><th>유통 code</th><th>Master code</th><th>요청</th><th>실제 출고</th><th>미출고</th></tr></thead>
           <tbody>
             {shipmentDocument.items.map((item) => (
               <tr key={item.lineNo}>
@@ -139,15 +143,19 @@ function WorkRequestDocumentContent() {
                 <td>{item.productBarcode || "-"}</td>
                 <td>{item.pCodeNo || item.codeNo || "-"}</td>
                 <td>{item.masterCodeNo || "-"}</td>
+                <td>{item.requestedQty.toLocaleString()}</td>
                 <td><strong>{item.qty.toLocaleString()}</strong></td>
-                <td />
+                <td>{item.unfulfilledQty.toLocaleString()}</td>
               </tr>
             ))}
           </tbody>
-          <tfoot><tr><th colSpan={4}>합계</th><th>{shipmentDocument.totalSku.toLocaleString()} SKU</th><th>{shipmentDocument.totalQty.toLocaleString()}</th><th /></tr></tfoot>
+          <tfoot><tr><th colSpan={4}>합계</th><th>{shipmentDocument.totalSku.toLocaleString()} SKU</th><th>{shipmentDocument.requestedTotalQty.toLocaleString()}</th><th>{shipmentDocument.totalQty.toLocaleString()}</th><th>{shipmentDocument.unfulfilledTotalQty.toLocaleString()}</th></tr></tfoot>
         </table>
 
-        <section className={styles.documentNote}><strong>비고 사항</strong><p>{shipmentDocument.note || "상기 품목을 업무요청에 따라 출고하였음을 확인합니다."}</p></section>
+        <section className={styles.documentNote}>
+          <strong>{forced ? "관리자 강제 완료" : "비고 사항"}</strong>
+          <p>{forced ? `사유: ${shipmentDocument.forceCompleteReason || "-"} · 완료 관리자: ${shipmentDocument.forceCompletedByName || "-"} · 미출고 ${shipmentDocument.unfulfilledTotalQty.toLocaleString()}개` : shipmentDocument.note || "상기 품목을 업무요청에 따라 출고하였음을 확인합니다."}</p>
+        </section>
         <footer className={styles.documentFooter}>
           <div><span>출고 담당</span><strong>{shipmentManagerName.trim() || "미입력"}</strong><em>(서명)</em></div>
           <div><span>인수인</span><strong>{shipmentDocument.vendorContact || ""}</strong><em>(서명)</em></div>
