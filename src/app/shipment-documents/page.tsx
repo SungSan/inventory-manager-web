@@ -3,23 +3,33 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PermissionGuard } from "@/components/permission-guard";
+import { useUser } from "@/components/user-provider";
 import {
   listShipmentDocuments,
+  setShipmentDocumentAdminOnly,
   type ShipmentDocumentSourceType,
   type ShipmentDocumentSummary,
 } from "@/lib/shipment-document-api";
 
 type SourceFilter = "ALL" | ShipmentDocumentSourceType;
 
+function formatCreatedAt(value: string): string {
+  if (!value) return "-";
+  return new Date(value).toLocaleString("ko-KR");
+}
+
 function ShipmentDocumentsContent() {
+  const { user } = useUser();
   const [documents, setDocuments] = useState<ShipmentDocumentSummary[]>([]);
   const [sourceType, setSourceType] = useState<SourceFilter>("ALL");
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
   const requestSequence = useRef(0);
+  const isAdmin = user?.role === "admin";
 
   const load = useCallback(async () => {
     const requestId = ++requestSequence.current;
@@ -49,12 +59,33 @@ function ShipmentDocumentsContent() {
     unfulfilled: documents.reduce((sum, item) => sum + item.unfulfilledTotalQty, 0),
   }), [documents]);
 
+  async function toggleAdminOnly(document: ShipmentDocumentSummary): Promise<void> {
+    if (!isAdmin) return;
+    const next = !document.adminOnly;
+    const confirmed = window.confirm(
+      next
+        ? `${document.documentNo} 문서를 관리자 전용으로 전환할까요?\n일반 사용자는 목록·상세·직접 URL에서 조회할 수 없습니다.`
+        : `${document.documentNo} 문서를 다시 기존 권한 사용자에게 공개할까요?`,
+    );
+    if (!confirmed) return;
+    setBusyId(document.id);
+    setError("");
+    try {
+      await setShipmentDocumentAdminOnly(document.id, next);
+      setDocuments((current) => current.map((item) => item.id === document.id ? { ...item, adminOnly: next } : item));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "명세서 공개 범위를 변경하지 못했습니다.");
+    } finally {
+      setBusyId("");
+    }
+  }
+
   return (
     <div className="page-stack">
       <section>
         <p className="eyebrow">UNIFIED SHIPMENT DOCUMENTS</p>
         <h2>출고명세서</h2>
-        <p className="muted">업무요청과 외부이관에서 생성된 출고명세서를 한 곳에서 조회·검색·출력합니다. 신규 문서는 공통 OUT 번호를 사용합니다.</p>
+        <p className="muted">업무요청과 외부이관에서 생성된 출고명세서를 한 곳에서 조회·검색·출력합니다. 작성일은 자동 기록되고 출고일은 문서에서 직접 지정할 수 있습니다.</p>
       </section>
 
       {error ? <p className="inline-error">{error}</p> : null}
@@ -83,19 +114,21 @@ function ShipmentDocumentsContent() {
         {documents.length > 0 ? (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>구분</th><th>문서번호</th><th>출고일</th><th>업체</th><th>출처</th><th>SKU</th><th>실제 출고</th><th>미출고</th><th>작업자</th><th /></tr></thead>
+              <thead><tr><th>구분</th><th>문서번호</th><th>작성일</th><th>출고일</th><th>업체</th><th>출처</th><th>SKU</th><th>실제 출고</th><th>미출고</th><th>작업자</th>{isAdmin ? <th>공개 범위</th> : null}<th /></tr></thead>
               <tbody>
                 {documents.map((document) => (
                   <tr key={document.id}>
-                    <td><span className={`status-badge ${document.sourceType === "WORK_REQUEST" ? "active" : "success"}`}>{document.sourceLabel}</span></td>
+                    <td><span className={`status-badge ${document.sourceType === "WORK_REQUEST" ? "active" : "success"}`}>{document.sourceLabel}</span>{document.adminOnly ? <><br /><small>관리자 전용</small></> : null}</td>
                     <td><strong>{document.documentNo}</strong></td>
-                    <td>{document.shipmentDate}</td>
+                    <td>{formatCreatedAt(document.createdAt)}</td>
+                    <td><strong>{document.shipmentDate}</strong></td>
                     <td><strong>{document.vendorName}</strong><br /><small>{document.purpose || "-"}</small></td>
                     <td>{document.sourceReferenceNo || "-"}</td>
                     <td>{document.totalSku.toLocaleString()}</td>
                     <td><strong>{document.totalQty.toLocaleString()}</strong></td>
                     <td>{document.unfulfilledTotalQty > 0 ? <strong>{document.unfulfilledTotalQty.toLocaleString()}</strong> : "-"}</td>
                     <td>{document.workerName || document.createdByLabel || "-"}</td>
+                    {isAdmin ? <td><button className="button button-secondary button-compact" onClick={() => void toggleAdminOnly(document)} disabled={busyId === document.id}>{busyId === document.id ? "변경 중..." : document.adminOnly ? "전체 공개" : "관리자 전용"}</button></td> : null}
                     <td><Link className="button button-secondary button-compact" href={`/shipment-documents/${document.id}`}>조회·출력</Link></td>
                   </tr>
                 ))}

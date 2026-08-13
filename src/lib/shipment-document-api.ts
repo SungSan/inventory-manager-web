@@ -20,6 +20,7 @@ export interface ShipmentDocumentSummary {
   requestedTotalQty: number;
   unfulfilledTotalQty: number;
   completionType: ShipmentDocumentCompletionType;
+  adminOnly: boolean;
   createdAt: string;
 }
 
@@ -86,6 +87,10 @@ function opt(value: unknown): string | undefined {
   return result || undefined;
 }
 
+function bool(value: unknown): boolean {
+  return value === true || value === "true" || value === 1 || value === "1";
+}
+
 function mapAllocation(value: unknown): ShipmentDocumentAllocation {
   const row = rec(value);
   return {
@@ -135,6 +140,7 @@ function mapSummary(value: unknown): ShipmentDocumentSummary {
     requestedTotalQty: Number(row.requested_total_qty ?? row.requestedTotalQty ?? totalQty),
     unfulfilledTotalQty: Number(row.unfulfilled_total_qty ?? row.unfulfilledTotalQty ?? 0),
     completionType: txt(row.completion_type ?? row.completionType ?? "NORMAL") as ShipmentDocumentCompletionType,
+    adminOnly: bool(row.admin_only ?? row.adminOnly),
     createdAt: txt(row.created_at ?? row.createdAt),
   };
 }
@@ -182,21 +188,56 @@ export async function getShipmentDocument(documentId: string): Promise<ShipmentD
   return mapDocument(data);
 }
 
-export async function updateShipmentDocumentPersonnel(
+export async function updateShipmentDocumentMetadata(
   documentId: string,
+  shipmentDate: string,
   writerName: string,
   shipmentManagerName: string,
-): Promise<{ writerName: string; shipmentManagerName: string }> {
+): Promise<{ shipmentDate: string; writerName: string; shipmentManagerName: string }> {
   ensureLive();
-  const { data, error } = await client().rpc("update_shipment_document_personnel", {
+  const { data, error } = await client().rpc("update_shipment_document_metadata", {
     p_document_id: documentId,
+    p_shipment_date: shipmentDate || null,
     p_writer_name: writerName.trim(),
     p_shipment_manager_name: shipmentManagerName.trim(),
   });
   if (error) throw new Error(error.message);
   const row = rec(data);
   return {
+    shipmentDate: txt(row.shipment_date ?? row.shipmentDate),
     writerName: txt(row.writer_name ?? row.writerName),
     shipmentManagerName: txt(row.shipment_manager_name ?? row.shipmentManagerName),
   };
+}
+
+export async function updateShipmentDocumentPersonnel(
+  documentId: string,
+  writerName: string,
+  shipmentManagerName: string,
+): Promise<{ writerName: string; shipmentManagerName: string }> {
+  const document = await getShipmentDocument(documentId);
+  const saved = await updateShipmentDocumentMetadata(
+    documentId,
+    document.shipmentDate,
+    writerName,
+    shipmentManagerName,
+  );
+  return {
+    writerName: saved.writerName,
+    shipmentManagerName: saved.shipmentManagerName,
+  };
+}
+
+export async function setShipmentDocumentAdminOnly(
+  documentId: string,
+  adminOnly: boolean,
+): Promise<{ adminOnly: boolean }> {
+  ensureLive();
+  const { data, error } = await client().rpc("admin_set_shipment_document_visibility", {
+    p_document_id: documentId,
+    p_admin_only: adminOnly,
+  });
+  if (error) throw new Error(error.message);
+  const row = rec(data);
+  return { adminOnly: bool(row.admin_only ?? row.adminOnly) };
 }
