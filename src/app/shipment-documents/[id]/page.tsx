@@ -4,9 +4,11 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PermissionGuard } from "@/components/permission-guard";
+import { useUser } from "@/components/user-provider";
 import {
   getShipmentDocument,
-  updateShipmentDocumentPersonnel,
+  setShipmentDocumentAdminOnly,
+  updateShipmentDocumentMetadata,
   type ShipmentDocument,
 } from "@/lib/shipment-document-api";
 import { printShipmentDocument } from "@/lib/shipment-document-print";
@@ -14,20 +16,25 @@ import styles from "@/app/external-transfers/external-transfers.module.css";
 
 function ShipmentDocumentContent() {
   const params = useParams<{ id: string }>();
+  const { user } = useUser();
   const printSheetRef = useRef<HTMLElement | null>(null);
   const [document, setDocument] = useState<ShipmentDocument | null>(null);
+  const [shipmentDate, setShipmentDate] = useState("");
   const [writerName, setWriterName] = useState("");
   const [shipmentManagerName, setShipmentManagerName] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [visibilityBusy, setVisibilityBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const isAdmin = user?.role === "admin";
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const loaded = await getShipmentDocument(params.id);
       setDocument(loaded);
+      setShipmentDate(loaded.shipmentDate);
       setWriterName(loaded.writerName || loaded.createdByLabel || "");
       setShipmentManagerName(loaded.shipmentManagerName || loaded.workerName || "");
       setError("");
@@ -41,7 +48,11 @@ function ShipmentDocumentContent() {
 
   useEffect(() => { void load(); }, [load]);
 
-  async function savePersonnel(showMessage = true): Promise<boolean> {
+  async function saveMetadata(showMessage = true): Promise<boolean> {
+    if (!shipmentDate) {
+      setError("출고일을 입력하세요.");
+      return false;
+    }
     if (!writerName.trim()) {
       setError("작성자를 입력하세요.");
       return false;
@@ -52,23 +63,57 @@ function ShipmentDocumentContent() {
     }
     setSaving(true);
     try {
-      const saved = await updateShipmentDocumentPersonnel(params.id, writerName, shipmentManagerName);
+      const saved = await updateShipmentDocumentMetadata(
+        params.id,
+        shipmentDate,
+        writerName,
+        shipmentManagerName,
+      );
+      setShipmentDate(saved.shipmentDate);
       setWriterName(saved.writerName);
       setShipmentManagerName(saved.shipmentManagerName);
+      setDocument((current) => current ? {
+        ...current,
+        shipmentDate: saved.shipmentDate,
+        writerName: saved.writerName,
+        shipmentManagerName: saved.shipmentManagerName,
+      } : current);
       setError("");
-      if (showMessage) setMessage("작성자와 출고 담당을 저장했습니다.");
+      if (showMessage) setMessage("출고일·작성자·출고 담당을 저장했습니다.");
       return true;
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "담당자 정보를 저장하지 못했습니다.");
+      setError(cause instanceof Error ? cause.message : "명세서 정보를 저장하지 못했습니다.");
       return false;
     } finally {
       setSaving(false);
     }
   }
 
+  async function toggleAdminOnly(): Promise<void> {
+    if (!document || !isAdmin) return;
+    const next = !document.adminOnly;
+    const confirmed = window.confirm(
+      next
+        ? "이 출고명세서를 관리자 전용으로 설정할까요? 일반 사용자는 목록·상세·직접 URL에서도 조회할 수 없습니다."
+        : "이 출고명세서를 기존 권한 사용자에게 다시 공개할까요?",
+    );
+    if (!confirmed) return;
+    setVisibilityBusy(true);
+    setError("");
+    try {
+      await setShipmentDocumentAdminOnly(document.id, next);
+      setDocument({ ...document, adminOnly: next });
+      setMessage(next ? "관리자 전용 문서로 변경했습니다." : "기존 권한 사용자에게 다시 공개했습니다.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "명세서 공개 범위를 변경하지 못했습니다.");
+    } finally {
+      setVisibilityBusy(false);
+    }
+  }
+
   async function printShipment(): Promise<void> {
     setMessage("");
-    const saved = await savePersonnel(false);
+    const saved = await saveMetadata(false);
     if (!saved || !printSheetRef.current) return;
     try {
       await printShipmentDocument(printSheetRef.current, `출고명세서 ${document?.documentNo ?? ""}`.trim());
@@ -86,22 +131,27 @@ function ShipmentDocumentContent() {
   const sourceHref = document.sourceType === "WORK_REQUEST"
     ? `/work-requests/${document.sourceEntityId}`
     : `/external-transfers/${document.sourceEntityId}`;
+  const createdAtLabel = new Date(document.createdAt).toLocaleString("ko-KR");
 
   return (
     <div className={styles.documentPage}>
       <div className={styles.documentActions} data-no-print="true">
         <Link className="button button-secondary" href="/shipment-documents">통합 명세서 목록</Link>
         <Link className="button button-secondary" href={sourceHref}>{document.sourceLabel} 원본</Link>
+        {isAdmin ? <button className="button button-secondary" onClick={() => void toggleAdminOnly()} disabled={visibilityBusy}>{visibilityBusy ? "변경 중..." : document.adminOnly ? "전체 공개로 변경" : "관리자 전용으로 변경"}</button> : null}
         <button className="button button-primary" onClick={() => void printShipment()} disabled={saving}>{saving ? "저장 중..." : "프린터 출력·PDF 저장"}</button>
       </div>
 
       <section className="panel" data-no-print="true">
-        <div className="section-heading"><div><p className="eyebrow">DOCUMENT PERSONNEL</p><h3>명세서 담당자</h3></div><button className="button button-secondary" onClick={() => void savePersonnel()} disabled={saving}>{saving ? "저장 중..." : "담당자 저장"}</button></div>
+        <div className="section-heading"><div><p className="eyebrow">DOCUMENT SETTINGS</p><h3>명세서 정보</h3></div><button className="button button-secondary" onClick={() => void saveMetadata()} disabled={saving}>{saving ? "저장 중..." : "명세서 정보 저장"}</button></div>
         <div className="form-grid">
+          <label>작성일<input value={createdAtLabel} disabled /></label>
+          <label>출고일 *<input type="date" value={shipmentDate} onChange={(event) => setShipmentDate(event.target.value)} disabled={saving} /></label>
           <label>작성자 *<input value={writerName} onChange={(event) => setWriterName(event.target.value)} disabled={saving} /></label>
           <label>출고 담당 *<input value={shipmentManagerName} onChange={(event) => setShipmentManagerName(event.target.value)} disabled={saving} /></label>
         </div>
-        <p className="muted">업무요청·외부이관 구분 없이 같은 출고문서 담당자 정보로 DB에 저장됩니다.</p>
+        <p className="muted">작성일은 문서 생성 시각으로 자동 기록되어 변경할 수 없습니다. 출고일은 실제 출고 일정에 맞게 직접 지정할 수 있습니다.</p>
+        {document.adminOnly ? <div className="feedback"><strong>관리자 전용 문서</strong><p>관리자 외 사용자는 이 문서를 조회할 수 없습니다.</p></div> : null}
         {forced ? <div className="feedback"><strong>관리자 강제 완료 명세서</strong><p>요청 {document.requestedTotalQty.toLocaleString()} / 실제 출고 {document.totalQty.toLocaleString()} / 미출고 {document.unfulfilledTotalQty.toLocaleString()}개 · 사유 {document.forceCompleteReason || "-"}</p></div> : null}
         {message ? <div className="feedback feedback-success"><strong>{message}</strong></div> : null}
         {error ? <p className="inline-error">{error}</p> : null}
@@ -115,7 +165,8 @@ function ShipmentDocumentContent() {
         </header>
 
         <section className={styles.documentInfoGrid}>
-          <div className={styles.infoLabel}>출고일자</div><div>{document.shipmentDate}</div><div className={styles.infoLabel}>작성자</div><div>{writerName.trim() || "미입력"}</div>
+          <div className={styles.infoLabel}>작성일자</div><div>{createdAtLabel}</div><div className={styles.infoLabel}>출고일자</div><div>{shipmentDate}</div>
+          <div className={styles.infoLabel}>작성자</div><div>{writerName.trim() || "미입력"}</div><div className={styles.infoLabel}>출고 담당</div><div>{shipmentManagerName.trim() || "미입력"}</div>
           <div className={styles.infoLabel}>출고지</div><div>사운드웨이브</div><div className={styles.infoLabel}>출고 구분</div><div>{document.sourceLabel}</div>
           <div className={styles.infoLabel}>도착지</div><div>{document.vendorName}</div><div className={styles.infoLabel}>인수인·연락처</div><div>{[document.vendorContact, document.vendorPhone].filter(Boolean).join(" · ") || "-"}</div>
           <div className={styles.infoLabel}>도착지 주소</div><div className={styles.infoWide}>{document.vendorAddress || "-"}</div>
@@ -149,7 +200,7 @@ function ShipmentDocumentContent() {
         <footer className={styles.documentFooter}>
           <div><span>출고 담당</span><strong>{shipmentManagerName.trim() || "미입력"}</strong><em>(서명)</em></div>
           <div><span>인수인</span><strong>{document.vendorContact || ""}</strong><em>(서명)</em></div>
-          <p>SAN WMS · {document.sourceLabel} · {document.sourceReferenceNo || "원본"} · 생성 {new Date(document.createdAt).toLocaleString("ko-KR")}</p>
+          <p>SAN WMS · {document.sourceLabel} · {document.sourceReferenceNo || "원본"} · 작성 {createdAtLabel}</p>
         </footer>
       </article>
     </div>
