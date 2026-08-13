@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PermissionGuard } from "@/components/permission-guard";
 import {
   listShipmentDocuments,
@@ -19,16 +19,21 @@ function ShipmentDocumentsContent() {
   const [dateTo, setDateTo] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const requestSequence = useRef(0);
 
   const load = useCallback(async () => {
+    const requestId = ++requestSequence.current;
     setLoading(true);
     try {
-      setDocuments(await listShipmentDocuments(sourceType, search, dateFrom, dateTo));
+      const next = await listShipmentDocuments(sourceType, search, dateFrom, dateTo);
+      if (requestId !== requestSequence.current) return;
+      setDocuments(next);
       setError("");
     } catch (cause) {
+      if (requestId !== requestSequence.current) return;
       setError(cause instanceof Error ? cause.message : "출고명세서를 불러오지 못했습니다.");
     } finally {
-      setLoading(false);
+      if (requestId === requestSequence.current) setLoading(false);
     }
   }, [dateFrom, dateTo, search, sourceType]);
 
