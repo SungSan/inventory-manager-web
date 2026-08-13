@@ -1,12 +1,265 @@
 -- SAN WMS V4.5.10
--- 통합 출고명세서 보안·감사로그 보정
--- 선행 조건: 36_UNIFIED_SHIPMENT_DOCUMENTS.sql
+-- 통합 출고명세서 누적 설치본
 --
--- 1) 통합 명세서 RPC에서 require_user_ready() 강제
--- 2) 외부이관 신규 OUT 번호를 완료 감사로그에도 정확히 기록
--- 3) 기존 재고 차감/LOC 배정/락/idempotency 로직은 그대로 유지
+-- 이 파일 하나만 실행하면 된다.
+-- 36_UNIFIED_SHIPMENT_DOCUMENTS.sql을 실행하지 않은 DB에서도 단독 적용 가능하며,
+-- 이미 36번을 실행한 DB에서도 재실행 안전하게 동작한다.
+--
+-- 기능
+--   * 업무요청 + 외부이관 출고명세서 공통 레지스트리
+--   * 기존 EXT-* / WR-SHIP-* 문서번호와 원본 보존
+--   * 신규 문서는 OUT-YYYYMMDD-NNNN 공통 번호
+--   * 공통 목록/상세/담당자 RPC
+--   * require_user_ready() 보안 게이트
+--   * 외부이관 감사로그에도 실제 OUT 번호 기록
+--
+-- 재고 차감/스캔/LOC 배정/row lock/idempotency 로직은 변경하지 않는다.
 
 begin;
+
+alter table public.external_shipment_documents
+  add column if not exists writer_name text not null default '',
+  add column if not exists shipment_manager_name text not null default '';
+
+alter table public.work_request_documents
+  add column if not exists completion_type text,
+  add column if not exists requested_total_qty integer,
+  add column if not exists unfulfilled_total_qty integer,
+  add column if not exists force_complete_reason text,
+  add column if not exists force_completed_by_name text;
+
+alter table public.work_request_document_items
+  add column if not exists requested_qty integer,
+  add column if not exists unfulfilled_qty integer;
+
+update public.work_request_documents
+set completion_type=coalesce(completion_type,'NORMAL'),
+    requested_total_qty=coalesce(requested_total_qty,total_qty),
+    unfulfilled_total_qty=coalesce(unfulfilled_total_qty,0)
+where completion_type is null
+   or requested_total_qty is null
+   or unfulfilled_total_qty is null;
+
+update public.work_request_document_items
+set requested_qty=coalesce(requested_qty,qty),
+    unfulfilled_qty=coalesce(unfulfilled_qty,0)
+where requested_qty is null
+   or unfulfilled_qty is null;
+
+create table if not exists public.shipment_document_daily_sequences (
+  shipment_date date primary key,
+  last_value integer not null check(last_value > 0)
+);
+
+create table if not exists public.shipment_document_registry (
+  id uuid primary key default gen_random_uuid(),
+  document_no text not null,
+  source_type text not null check(source_type in ('WORK_REQUEST','EXTERNAL_TRANSFER')),
+  source_document_id uuid not null,
+  source_job_id uuid not null,
+  shipment_date date not null,
+  writer_name text not null default '',
+  shipment_manager_name text not null default '',
+  created_at timestamptz not null default now(),
+  unique(source_type,source_document_id)
+);
+
+create index if not exists shipment_document_registry_date_idx
+  on public.shipment_document_registry(shipment_date desc,created_at desc);
+create index if not exists shipment_document_registry_source_idx
+  on public.shipment_document_registry(source_type,source_job_id);
+create unique index if not exists shipment_document_registry_out_no_unique
+  on public.shipment_document_registry(document_no)
+  where document_no like 'OUT-%';
+
+alter table public.shipment_document_daily_sequences enable row level security;
+alter table public.shipment_document_registry enable row level security;
+
+-- 기존 외부이관 명세서를 번호 변경 없이 통합 레지스트리에 등록한다.
+insert into public.shipment_document_registry(
+  document_no,source_type,source_document_id,source_job_id,shipment_date,
+  writer_name,shipment_manager_name,created_at
+)
+select
+  d.document_no,'EXTERNAL_TRANSFER',d.id,d.source_job_id,d.shipment_date,
+  coalesce(nullif(btrim(d.writer_name),''),d.created_by_label,''),
+  coalesce(nullif(btrim(d.shipment_manager_name),''),d.created_by_label,''),
+  d.created_at
+from public.external_shipment_documents d
+on conflict(source_type,source_document_id) do update
+set document_no=excluded.document_no,
+    source_job_id=excluded.source_job_id,
+    shipment_date=excluded.shipment_date,
+    writer_name=case when public.shipment_document_registry.writer_name='' then excluded.writer_name else public.shipment_document_registry.writer_name end,
+    shipment_manager_name=case when public.shipment_document_registry.shipment_manager_name='' then excluded.shipment_manager_name else public.shipment_document_registry.shipment_manager_name end;
+
+-- 기존 업무요청 명세서를 번호 변경 없이 통합 레지스트리에 등록한다.
+insert into public.shipment_document_registry(
+  document_no,source_type,source_document_id,source_job_id,shipment_date,
+  writer_name,shipment_manager_name,created_at
+)
+select
+  d.document_no,'WORK_REQUEST',d.id,d.work_request_id,d.shipment_date,
+  coalesce(nullif(btrim(d.requester_name_snapshot),''),'사용자'),
+  coalesce(nullif(btrim(d.worker_name_snapshot),''),'사용자'),
+  d.created_at
+from public.work_request_documents d
+on conflict(source_type,source_document_id) do update
+set document_no=excluded.document_no,
+    source_job_id=excluded.source_job_id,
+    shipment_date=excluded.shipment_date,
+    writer_name=case when public.shipment_document_registry.writer_name='' then excluded.writer_name else public.shipment_document_registry.writer_name end,
+    shipment_manager_name=case when public.shipment_document_registry.shipment_manager_name='' then excluded.shipment_manager_name else public.shipment_document_registry.shipment_manager_name end;
+
+-- 이전 실행에서 이미 OUT 번호가 있다면 일자별 다음 번호가 뒤로 가지 않도록 시퀀스를 보정한다.
+insert into public.shipment_document_daily_sequences(shipment_date,last_value)
+select
+  r.shipment_date,
+  max((regexp_match(r.document_no,'^OUT-[0-9]{8}-([0-9]+)$'))[1]::integer)
+from public.shipment_document_registry r
+where r.document_no ~ '^OUT-[0-9]{8}-[0-9]+$'
+group by r.shipment_date
+on conflict(shipment_date) do update
+set last_value=greatest(
+  public.shipment_document_daily_sequences.last_value,
+  excluded.last_value
+);
+
+create or replace function public.next_shipment_document_no(p_shipment_date date default current_date)
+returns text
+language plpgsql
+security definer
+set search_path=public
+as $$
+declare
+  v_date date:=coalesce(p_shipment_date,current_date);
+  v_sequence integer;
+begin
+  insert into public.shipment_document_daily_sequences(shipment_date,last_value)
+  values(v_date,1)
+  on conflict(shipment_date) do update
+    set last_value=public.shipment_document_daily_sequences.last_value+1
+  returning last_value into v_sequence;
+
+  return 'OUT-'||to_char(v_date,'YYYYMMDD')||'-'||lpad(v_sequence::text,4,'0');
+end;
+$$;
+
+create or replace function public.prepare_unified_shipment_document_no()
+returns trigger
+language plpgsql
+security definer
+set search_path=public
+as $$
+begin
+  new.document_no:=public.next_shipment_document_no(new.shipment_date);
+  return new;
+end;
+$$;
+
+create or replace function public.register_unified_shipment_document()
+returns trigger
+language plpgsql
+security definer
+set search_path=public
+as $$
+begin
+  if tg_table_name='external_shipment_documents' then
+    insert into public.shipment_document_registry(
+      document_no,source_type,source_document_id,source_job_id,shipment_date,
+      writer_name,shipment_manager_name,created_at
+    ) values(
+      new.document_no,'EXTERNAL_TRANSFER',new.id,new.source_job_id,new.shipment_date,
+      coalesce(nullif(btrim(new.writer_name),''),new.created_by_label,''),
+      coalesce(nullif(btrim(new.shipment_manager_name),''),new.created_by_label,''),
+      new.created_at
+    ) on conflict(source_type,source_document_id) do update
+      set document_no=excluded.document_no,
+          source_job_id=excluded.source_job_id,
+          shipment_date=excluded.shipment_date;
+  elsif tg_table_name='work_request_documents' then
+    insert into public.shipment_document_registry(
+      document_no,source_type,source_document_id,source_job_id,shipment_date,
+      writer_name,shipment_manager_name,created_at
+    ) values(
+      new.document_no,'WORK_REQUEST',new.id,new.work_request_id,new.shipment_date,
+      coalesce(nullif(btrim(new.requester_name_snapshot),''),'사용자'),
+      coalesce(nullif(btrim(new.worker_name_snapshot),''),'사용자'),
+      new.created_at
+    ) on conflict(source_type,source_document_id) do update
+      set document_no=excluded.document_no,
+          source_job_id=excluded.source_job_id,
+          shipment_date=excluded.shipment_date;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_external_shipment_unified_no on public.external_shipment_documents;
+create trigger trg_external_shipment_unified_no
+before insert on public.external_shipment_documents
+for each row execute function public.prepare_unified_shipment_document_no();
+
+drop trigger if exists trg_work_request_shipment_unified_no on public.work_request_documents;
+create trigger trg_work_request_shipment_unified_no
+before insert on public.work_request_documents
+for each row execute function public.prepare_unified_shipment_document_no();
+
+drop trigger if exists trg_external_shipment_registry on public.external_shipment_documents;
+create trigger trg_external_shipment_registry
+after insert on public.external_shipment_documents
+for each row execute function public.register_unified_shipment_document();
+
+drop trigger if exists trg_work_request_shipment_registry on public.work_request_documents;
+create trigger trg_work_request_shipment_registry
+after insert on public.work_request_documents
+for each row execute function public.register_unified_shipment_document();
+
+create or replace function public.sync_external_shipment_personnel_to_registry()
+returns trigger
+language plpgsql
+security definer
+set search_path=public
+as $$
+begin
+  update public.shipment_document_registry
+  set writer_name=new.writer_name,
+      shipment_manager_name=new.shipment_manager_name
+  where source_type='EXTERNAL_TRANSFER'
+    and source_document_id=new.id;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_external_shipment_personnel_registry on public.external_shipment_documents;
+create trigger trg_external_shipment_personnel_registry
+after update of writer_name,shipment_manager_name on public.external_shipment_documents
+for each row execute function public.sync_external_shipment_personnel_to_registry();
+
+create or replace function public.shipment_document_can_access(p_registry_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path=public
+as $$
+  select exists(
+    select 1
+    from public.shipment_document_registry r
+    left join public.work_request_documents w
+      on r.source_type='WORK_REQUEST' and w.id=r.source_document_id
+    where r.id=p_registry_id
+      and (
+        (r.source_type='EXTERNAL_TRANSFER' and public.current_role() in ('admin','manager','operator'))
+        or
+        (r.source_type='WORK_REQUEST' and (
+          public.current_role() in ('admin','manager')
+          or w.requester_id=auth.uid()
+          or w.worker_id=auth.uid()
+        ))
+      )
+  );
+$$;
 
 create or replace function public.list_shipment_documents(
   p_source_type text default 'ALL',
@@ -239,8 +492,7 @@ begin
 end;
 $$;
 
--- 외부이관 완료 함수의 기존 재고 로직은 유지하되, BEFORE INSERT 트리거가
--- 실제로 부여한 OUT 문서번호를 RETURNING으로 다시 받아 감사로그에 사용한다.
+-- 외부이관 완료 함수는 기존 로직을 그대로 유지하고 INSERT 후 실제 OUT 번호만 다시 받는다.
 create or replace function public.complete_external_transfer_job(p_job_id uuid)
 returns jsonb language plpgsql security definer set search_path=public as $$
 declare
@@ -346,6 +598,11 @@ begin
 end;
 $$;
 
+revoke all on function public.next_shipment_document_no(date) from public,anon,authenticated;
+revoke all on function public.prepare_unified_shipment_document_no() from public,anon,authenticated;
+revoke all on function public.register_unified_shipment_document() from public,anon,authenticated;
+revoke all on function public.sync_external_shipment_personnel_to_registry() from public,anon,authenticated;
+revoke all on function public.shipment_document_can_access(uuid) from public,anon;
 revoke all on function public.list_shipment_documents(text,text,date,date,integer) from public,anon;
 revoke all on function public.get_shipment_document(uuid) from public,anon;
 revoke all on function public.update_shipment_document_personnel(uuid,text,text) from public,anon;
@@ -359,4 +616,10 @@ grant execute on function public.complete_external_transfer_job(uuid) to authent
 notify pgrst,'reload schema';
 commit;
 
-select 'SAN WMS V4.5.10 unified shipment document hardening completed' as result;
+select
+  count(*) filter(where source_type='WORK_REQUEST') as work_request_documents,
+  count(*) filter(where source_type='EXTERNAL_TRANSFER') as external_transfer_documents,
+  count(*) as unified_documents
+from public.shipment_document_registry;
+
+select 'SAN WMS V4.5.10 cumulative unified shipment documents migration completed' as result;
