@@ -1,12 +1,10 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { PermissionGuard } from "@/components/permission-guard";
-import { ExternalShipmentDocumentV2 } from "@/components/external-shipment-document-v2";
-
-export default function ExternalShipmentDocumentPage() {
-  return (
-    <PermissionGuard permission="external_transfer">
-      <ExternalShipmentDocumentV2 />
-    </PermissionGuard>
-  );
+export default async function ExternalShipmentDocumentLegacyPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  redirect(`/shipment-documents/${id}`);
 }
