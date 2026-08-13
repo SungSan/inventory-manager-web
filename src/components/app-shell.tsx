@@ -23,6 +23,7 @@ const nav: Array<{ href: string; label: string; permission: Permission }> = [
   { href: "/transfers", label: "재고이관", permission: "transfer_inventory" },
   { href: "/external-transfers", label: "외부이관", permission: "external_transfer" },
   { href: "/work-requests", label: "업무요청", permission: "work_requests" },
+  { href: "/shipment-documents", label: "출고명세서", permission: "shipment_documents" },
   { href: "/products", label: "상품관리", permission: "manage_products" },
   { href: "/barcodes", label: "바코드", permission: "manage_barcodes" },
   { href: "/locations", label: "로케이션", permission: "manage_locations" },
