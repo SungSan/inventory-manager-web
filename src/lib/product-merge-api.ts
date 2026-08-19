@@ -56,6 +56,20 @@ function opt(value: unknown): string | undefined {
   return result || undefined;
 }
 
+function mergeDbError(message: string): Error {
+  const normalized = message.toLowerCase();
+  if (
+    normalized.includes("could not find the function")
+    || normalized.includes("schema cache")
+    || normalized.includes("list_product_merge_candidates")
+    || normalized.includes("admin_merge_product")
+    || normalized.includes("merged_into_product_id")
+  ) {
+    return new Error("상품 병합 DB 기능이 아직 적용되지 않았습니다. Supabase SQL Editor에서 SQL 40(V4.6.4 누적본)을 실행한 뒤 다시 시도하세요.");
+  }
+  return new Error(message);
+}
+
 function mapCandidate(value: unknown): ProductMergeCandidate {
   const row = rec(value);
   return {
@@ -89,7 +103,7 @@ export async function listProductMergeCandidates(search = ""): Promise<ProductMe
     p_search: search,
     p_limit: 120,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw mergeDbError(error.message);
   return arr(data).map(mapCandidate);
 }
 
@@ -104,9 +118,9 @@ export async function mergeProductRecords(
     p_target_product_id: targetProductId,
     p_reason: reason.trim() || null,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw mergeDbError(error.message);
   const row = rec(data);
-  return {
+  const result: ProductMergeResult = {
     sourceProductId: txt(row.source_product_id),
     targetProductId: txt(row.target_product_id),
     movedQty: Number(row.moved_qty ?? 0),
@@ -115,4 +129,6 @@ export async function mergeProductRecords(
     duplicateBarcodesDisabled: Number(row.duplicate_barcodes_disabled ?? 0),
     merged: Boolean(row.merged),
   };
+  if (!result.merged) throw new Error("상품 병합이 완료되지 않았습니다. 화면을 새로고침한 뒤 다시 시도하세요.");
+  return result;
 }
