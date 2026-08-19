@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { CameraSearchField } from "@/components/camera-search-field";
@@ -69,7 +70,7 @@ function ProductsContent() {
   }
 
   return <div className="page-stack">
-    <section><p className="eyebrow">PRODUCT MASTER</p><h2>상품 관리</h2><p className="muted">신규 상품은 대표 상품 바코드와 동시에 등록됩니다. 동일한 CODE_NO·상품 바코드를 여러 세부 버전에 사용할 수 있으며 상품명/버전으로 구분됩니다.</p></section>
+    <section className="section-heading"><div><p className="eyebrow">PRODUCT MASTER</p><h2>상품 관리</h2><p className="muted">신규 상품은 대표 상품 바코드와 동시에 등록됩니다. 동일한 CODE_NO·상품 바코드를 여러 세부 버전에 사용할 수 있으며 상품명/버전으로 구분됩니다.</p></div>{canDelete ? <Link className="button button-secondary" href="/products/merge">중복·오타 상품 병합</Link> : null}</section>
     {returnTo ? <div className="feedback feedback-info"><strong>재고실사에서 발견한 신규 바코드입니다.</strong><p>상품 등록이 끝나면 원래 실사 화면으로 돌아가 자동 검증합니다.</p></div> : null}
     <section className="panel"><div className="section-heading"><div><h3>{editingId ? "상품 정보 수정" : "신규 상품 즉시 등록"}</h3></div>{editingId ? <button className="button button-secondary button-compact" onClick={() => { setEditingId(null); setForm(emptyForm); }}>수정 취소</button> : null}</div><div className="form-grid">
       <label>P_CODE_NO<input value={form.pCodeNo} onChange={(e) => setForm({ ...form, pCodeNo: e.target.value })} /></label>
