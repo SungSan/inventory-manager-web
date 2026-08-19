@@ -299,7 +299,7 @@ function ProductMergeContent() {
               items={items}
               selectedId={draft?.id}
               excludedId={step === 2 ? source?.id : undefined}
-              step={step}
+              step={step === 1 ? 1 : 2}
               onSelect={chooseCandidate}
             />
           ) : null}
