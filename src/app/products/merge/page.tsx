@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { PermissionGuard } from "@/components/permission-guard";
 import { useUser } from "@/components/user-provider";
 import {
@@ -90,23 +90,37 @@ function ProductMergeContent() {
 
   const step: 1 | 2 | 3 = !source ? 1 : !target ? 2 : 3;
 
-  const load = useCallback(async () => {
-    if (step === 3) return;
-    setLoading(true);
-    try {
-      setItems(await listProductMergeCandidates(search));
-      setError("");
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "상품을 불러오지 못했습니다.");
-    } finally {
-      setLoading(false);
-    }
-  }, [search, step]);
-
   useEffect(() => {
-    const timer = window.setTimeout(() => void load(), 180);
-    return () => window.clearTimeout(timer);
-  }, [load]);
+    let cancelled = false;
+
+    if (step === 3) {
+      setItems([]);
+      setLoading(false);
+      return () => { cancelled = true; };
+    }
+
+    setLoading(true);
+    const timer = window.setTimeout(() => {
+      void listProductMergeCandidates(search)
+        .then((result) => {
+          if (cancelled) return;
+          setItems(result);
+          setError("");
+        })
+        .catch((cause) => {
+          if (cancelled) return;
+          setError(cause instanceof Error ? cause.message : "상품을 불러오지 못했습니다.");
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [search, step]);
 
   if (user?.role !== "admin" && user?.role !== "manager") {
     return (
