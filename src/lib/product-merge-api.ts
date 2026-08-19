@@ -101,7 +101,7 @@ export async function listProductMergeCandidates(search = ""): Promise<ProductMe
   if (isDemoMode()) return [];
   const { data, error } = await client().rpc("list_product_merge_candidates", {
     p_search: search,
-    p_limit: 120,
+    p_limit: 300,
   });
   if (error) throw mergeDbError(error.message);
   return arr(data).map(mapCandidate);
