@@ -157,10 +157,7 @@ function InventoryContent() {
     const grouped = new Map<string, ProductInventorySummary>();
     for (const bucket of products.values()) {
       const canonicalBarcode = getCanonicalBarcode(bucket);
-      const groupKey = [
-        canonicalBarcode,
-        normalizeIdentity(bucket.nameVer),
-      ].join("||");
+      const groupKey = [canonicalBarcode, normalizeIdentity(bucket.nameVer)].join("||");
 
       const existing = grouped.get(groupKey);
       if (existing) {
@@ -243,10 +240,16 @@ function InventoryContent() {
   const total = summaries.reduce((sum, item) => sum + item.totalQty, 0);
   const locationRowCount = summaries.reduce((sum, item) => sum + item.locationRows.length, 0);
 
+  const selectedPositiveLocationCount = useMemo(
+    () => selected?.locationRows.filter((row) => row.qty > 0).length ?? 0,
+    [selected],
+  );
+
   const selectedZoneGroups = useMemo(() => {
     if (!selected) return [];
     const map = new Map<string, LocationInventorySummary[]>();
     for (const row of selected.locationRows) {
+      if (row.qty <= 0) continue;
       const zone = row.zone || row.locationCode.split("-")[0] || "기타";
       const list = map.get(zone) ?? [];
       list.push(row);
@@ -275,7 +278,7 @@ function InventoryContent() {
       <section>
         <p className="eyebrow">INVENTORY</p>
         <h2>재고 조회</h2>
-        <p className="muted">상품 바코드와 상품명이 같은 데이터는 한 줄로 묶어 표시합니다. 상세보기에서는 구역과 로케이션별 실제 재고를 확인할 수 있습니다.</p>
+        <p className="muted">상품 바코드와 상품명이 같은 데이터는 한 줄로 묶어 표시합니다. 상세보기에서는 현재 수량이 있는 로케이션만 표시합니다.</p>
       </section>
 
       <section className="panel filter-row">
@@ -340,7 +343,7 @@ function InventoryContent() {
               <div>
                 <p className="eyebrow">STOCK DETAIL</p>
                 <h3>{formatValueList(selected.artists)} · {selected.nameVer}</h3>
-                <p className="muted">상품 바코드 {selected.displayBarcode} · 총재고 {selected.totalQty.toLocaleString()}개 · {selected.locationRows.length}개 로케이션</p>
+                <p className="muted">상품 바코드 {selected.displayBarcode} · 총재고 {selected.totalQty.toLocaleString()}개 · {selectedPositiveLocationCount}개 로케이션</p>
                 {selected.productIds.length > 1 ? <p className="small muted">동일한 상품 바코드와 상품명으로 등록된 {selected.productIds.length}개 상품 데이터를 통합해 표시합니다.</p> : null}
               </div>
               <button className="button button-ghost" onClick={() => setSelected(null)}>닫기</button>
@@ -391,6 +394,7 @@ function InventoryContent() {
                   </div>
                 </section>
               ))}
+              {selectedZoneGroups.length === 0 ? <p className="empty-state">현재 실재고가 있는 로케이션이 없습니다.</p> : null}
             </div>
           </section>
         </div>
