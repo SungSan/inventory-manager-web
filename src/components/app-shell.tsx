@@ -89,6 +89,11 @@ function ShellContent({ children }: { children: React.ReactNode }) {
     [visibleNav],
   );
 
+  const currentNav = useMemo(
+    () => visibleNav.find((item) => isRouteActive(pathname, item.href)),
+    [pathname, visibleNav],
+  );
+
   function signOut() {
     if (user) localStorage.removeItem(desktopActivityStorageKey(user.id));
     void getSupabaseClient()?.auth.signOut({ scope: "local" });
@@ -157,10 +162,28 @@ function ShellContent({ children }: { children: React.ReactNode }) {
       <WorkRequestRuleEnhancer />
       <NumericInputGuard />
 
-      <aside className={styles.sidebar} aria-label="SAN WMS 사이드바">
-        <Brand />
-        <NavigationLinks />
-        <SessionPanel />
+      <aside className={styles.desktopRail} aria-label="SAN WMS 빠른 메뉴">
+        <Link href="/" className={styles.railBrand} aria-label="대시보드" title="대시보드">S</Link>
+        <button
+          type="button"
+          className={styles.railMenuButton}
+          onClick={() => setDrawerOpen(true)}
+          aria-label="전체 메뉴 열기"
+          aria-expanded={drawerOpen}
+          aria-controls="san-wms-navigation-drawer"
+          title="전체 메뉴"
+        >
+          ☰
+        </button>
+        <div className={styles.railCurrent} title={currentNav?.label ?? "현재 메뉴"} aria-hidden="true">
+          <span />
+        </div>
+        <div className={styles.railSpacer} />
+        <span
+          className={`${styles.railStatus} ${isDemoMode() ? styles.railStatusDemo : styles.railStatusLive}`}
+          title={isDemoMode() ? "DEMO" : "LIVE"}
+          aria-label={isDemoMode() ? "데모 모드" : "실운영 모드"}
+        />
       </aside>
 
       <button
@@ -170,6 +193,7 @@ function ShellContent({ children }: { children: React.ReactNode }) {
         onClick={() => setDrawerOpen(false)}
       />
       <aside
+        id="san-wms-navigation-drawer"
         className={`${styles.drawer} ${drawerOpen ? styles.drawerOpen : ""}`}
         aria-hidden={!drawerOpen}
         inert={!drawerOpen}
@@ -190,6 +214,7 @@ function ShellContent({ children }: { children: React.ReactNode }) {
             onClick={() => setDrawerOpen(true)}
             aria-label="전체 메뉴 열기"
             aria-expanded={drawerOpen}
+            aria-controls="san-wms-navigation-drawer"
           >
             ☰
           </button>
