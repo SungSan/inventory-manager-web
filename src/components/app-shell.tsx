@@ -15,6 +15,7 @@ import { desktopActivityStorageKey } from "@/lib/session-guard-api";
 import { isDemoMode, getSupabaseClient } from "@/lib/supabase";
 import { listUsers, subscribeToInventory } from "@/lib/inventory-api";
 import type { UserProfile } from "@/types/domain";
+import styles from "./app-shell.module.css";
 
 const nav: Array<{ href: string; label: string; permission: Permission }> = [
   { href: "/", label: "대시보드", permission: "view_dashboard" },
@@ -36,10 +37,22 @@ const nav: Array<{ href: string; label: string; permission: Permission }> = [
   { href: "/my-consent", label: "내 동의내역", permission: "view_dashboard" },
 ];
 
+const mobilePrimary = [
+  { href: "/", label: "홈", icon: "⌂" },
+  { href: "/scan", label: "입출고", icon: "⇅" },
+  { href: "/inventory", label: "재고조회", icon: "▦" },
+  { href: "/transfers", label: "재고이관", icon: "⇄" },
+];
+
+function isRouteActive(pathname: string, href: string): boolean {
+  return pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
+}
+
 function ShellContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, switchDemoUser } = useUser();
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
     if (!isDemoMode()) return;
@@ -48,37 +61,165 @@ function ShellContent({ children }: { children: React.ReactNode }) {
     return subscribeToInventory(loadUsers, { scope: "users" });
   }, []);
 
-  const visibleNav = useMemo(() => user ? nav.filter((item) => hasPermission(user.role, item.permission)) : [], [user]);
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setDrawerOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [drawerOpen]);
+
+  const visibleNav = useMemo(
+    () => user ? nav.filter((item) => hasPermission(user.role, item.permission)) : [],
+    [user],
+  );
+
+  const mobileNav = useMemo(
+    () => mobilePrimary.filter((item) => visibleNav.some((navItem) => navItem.href === item.href)),
+    [visibleNav],
+  );
+
+  function signOut() {
+    if (user) localStorage.removeItem(desktopActivityStorageKey(user.id));
+    void getSupabaseClient()?.auth.signOut({ scope: "local" });
+  }
+
+  function NavigationLinks({ onNavigate }: { onNavigate?: () => void }) {
+    return (
+      <nav className={styles.sideNav} aria-label="주요 메뉴">
+        {visibleNav.map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            onClick={onNavigate}
+            className={`${styles.sideLink} ${isRouteActive(pathname, item.href) ? styles.sideLinkActive : ""}`}
+          >
+            {item.label}
+          </Link>
+        ))}
+      </nav>
+    );
+  }
+
+  function Brand() {
+    return (
+      <div className={styles.brand}>
+        <span className={styles.brandMark}>S</span>
+        <div className={styles.brandText}>
+          <strong>SAN WMS</strong>
+          <small>재고관리 · {APP_VERSION_LABEL}</small>
+        </div>
+      </div>
+    );
+  }
+
+  function SessionPanel() {
+    return (
+      <div className={styles.sidebarFooter}>
+        <div className={styles.sessionRow}>
+          <span className={`${styles.sidebarMode} ${isDemoMode() ? styles.sidebarModeDemo : styles.sidebarModeLive}`}>
+            {isDemoMode() ? "DEMO" : "LIVE"}
+          </span>
+          {user ? <span className={styles.sidebarUser}>{user.displayName} · {roleLabels[user.role]}</span> : null}
+        </div>
+        {isDemoMode() && user ? (
+          <select
+            className={styles.sidebarSelect}
+            value={user.id}
+            onChange={(event) => void switchDemoUser(event.target.value)}
+            aria-label="데모 사용자 변경"
+          >
+            {users.map((item) => (
+              <option key={item.id} value={item.id}>{item.displayName} ({roleLabels[item.role]})</option>
+            ))}
+          </select>
+        ) : null}
+        {!isDemoMode() ? (
+          <button type="button" className={styles.sidebarLogout} onClick={signOut}>로그아웃</button>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
-    <div className="app-layout">
+    <div className={styles.shell}>
       <StocktakeLiveEnhancer />
       <WorkRequestRuleEnhancer />
       <NumericInputGuard />
-      <header className="topbar">
-        <div><p className="eyebrow">SAN WMS · {APP_VERSION_LABEL}</p><h1>재고관리</h1></div>
-        <div className="topbar-meta">
-          <WorkRequestIndicator />
-          <span className={`mode-badge ${isDemoMode() ? "demo" : "live"}`}>{isDemoMode() ? "DEMO" : "LIVE"}</span>
-          {user ? <span className="user-chip">{user.displayName} · {roleLabels[user.role]}</span> : null}
-          {isDemoMode() && user ? <select className="user-switch" value={user.id} onChange={(event) => void switchDemoUser(event.target.value)} aria-label="데모 사용자 변경">{users.map((item) => <option key={item.id} value={item.id}>{item.displayName} ({roleLabels[item.role]})</option>)}</select> : null}
-          {!isDemoMode() ? (
-            <button
-              className="button button-compact button-secondary"
-              onClick={() => {
-                if (user) localStorage.removeItem(desktopActivityStorageKey(user.id));
-                void getSupabaseClient()?.auth.signOut({ scope: "local" });
-              }}
-            >
-              로그아웃
-            </button>
-          ) : null}
+
+      <aside className={styles.sidebar} aria-label="SAN WMS 사이드바">
+        <Brand />
+        <NavigationLinks />
+        <SessionPanel />
+      </aside>
+
+      <button
+        type="button"
+        aria-label="메뉴 닫기"
+        className={`${styles.drawerBackdrop} ${drawerOpen ? styles.drawerBackdropOpen : ""}`}
+        onClick={() => setDrawerOpen(false)}
+      />
+      <aside className={`${styles.drawer} ${drawerOpen ? styles.drawerOpen : ""}`} aria-hidden={!drawerOpen}>
+        <div className={styles.drawerHeader}>
+          <Brand />
+          <button type="button" className={styles.drawerClose} onClick={() => setDrawerOpen(false)} aria-label="메뉴 닫기">×</button>
         </div>
-      </header>
-      <nav className="main-nav" aria-label="주요 메뉴">{visibleNav.map((item) => <Link key={item.href} href={item.href} className={pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href)) ? "active" : ""}>{item.label}</Link>)}</nav>
-      <main className="content">{children}</main>
+        <NavigationLinks onNavigate={() => setDrawerOpen(false)} />
+        <SessionPanel />
+      </aside>
+
+      <div className={styles.workspace}>
+        <header className={styles.workspaceHeader}>
+          <button
+            type="button"
+            className={styles.mobileMenuButton}
+            onClick={() => setDrawerOpen(true)}
+            aria-label="전체 메뉴 열기"
+            aria-expanded={drawerOpen}
+          >
+            ☰
+          </button>
+          <div className={styles.workspaceTitle}>
+            <p className="eyebrow">SAN WMS · {APP_VERSION_LABEL}</p>
+            <h1>재고관리</h1>
+          </div>
+          <div className={styles.workspaceActions}>
+            <WorkRequestIndicator />
+          </div>
+        </header>
+        <main className={styles.content}>{children}</main>
+      </div>
+
+      <nav className={styles.bottomNav} aria-label="모바일 빠른 메뉴">
+        {mobileNav.map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={`${styles.bottomLink} ${isRouteActive(pathname, item.href) ? styles.bottomLinkActive : ""}`}
+          >
+            <span className={styles.bottomIcon} aria-hidden="true">{item.icon}</span>
+            <span className={styles.bottomLabel}>{item.label}</span>
+          </Link>
+        ))}
+        <button type="button" className={styles.bottomMore} onClick={() => setDrawerOpen(true)} aria-label="전체 메뉴 열기">
+          <span className={styles.bottomIcon} aria-hidden="true">☰</span>
+          <span className={styles.bottomLabel}>전체</span>
+        </button>
+      </nav>
     </div>
   );
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) { return <AuthGate><ShellContent>{children}</ShellContent></AuthGate>; }
+export function AppShell({ children }: { children: React.ReactNode }) {
+  return <AuthGate><ShellContent>{children}</ShellContent></AuthGate>;
+}
