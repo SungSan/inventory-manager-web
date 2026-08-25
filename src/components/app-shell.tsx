@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AuthGate } from "@/components/auth-gate";
 import { NumericInputGuard } from "@/components/numeric-input-guard";
 import { StocktakeLiveEnhancer } from "@/components/stocktake-live-enhancer";
@@ -53,6 +53,51 @@ function ShellContent({ children }: { children: React.ReactNode }) {
   const { user, switchDemoUser } = useUser();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerPinned, setDrawerPinned] = useState(false);
+  const hoverCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function cancelHoverClose() {
+    if (hoverCloseTimer.current !== null) {
+      clearTimeout(hoverCloseTimer.current);
+      hoverCloseTimer.current = null;
+    }
+  }
+
+  function closeDrawer() {
+    cancelHoverClose();
+    setDrawerPinned(false);
+    setDrawerOpen(false);
+  }
+
+  function openDrawer() {
+    cancelHoverClose();
+    setDrawerOpen(true);
+  }
+
+  function openDrawerFromHover() {
+    cancelHoverClose();
+    setDrawerOpen(true);
+  }
+
+  function scheduleHoverClose() {
+    if (drawerPinned) return;
+    cancelHoverClose();
+    hoverCloseTimer.current = setTimeout(() => {
+      setDrawerOpen(false);
+      hoverCloseTimer.current = null;
+    }, 220);
+  }
+
+  function toggleDesktopDrawer() {
+    cancelHoverClose();
+    if (drawerPinned) {
+      setDrawerPinned(false);
+      setDrawerOpen(false);
+      return;
+    }
+    setDrawerPinned(true);
+    setDrawerOpen(true);
+  }
 
   useEffect(() => {
     if (!isDemoMode()) return;
@@ -62,19 +107,24 @@ function ShellContent({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    cancelHoverClose();
+    setDrawerPinned(false);
     setDrawerOpen(false);
   }, [pathname]);
 
+  useEffect(() => () => cancelHoverClose(), []);
+
   useEffect(() => {
     if (!drawerOpen) return;
+    const shouldLockBody = window.matchMedia("(max-width: 1199px)").matches;
     const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    if (shouldLockBody) document.body.style.overflow = "hidden";
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setDrawerOpen(false);
+      if (event.key === "Escape") closeDrawer();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => {
-      document.body.style.overflow = previousOverflow;
+      if (shouldLockBody) document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [drawerOpen]);
@@ -162,16 +212,21 @@ function ShellContent({ children }: { children: React.ReactNode }) {
       <WorkRequestRuleEnhancer />
       <NumericInputGuard />
 
-      <aside className={styles.desktopRail} aria-label="SAN WMS 빠른 메뉴">
+      <aside
+        className={styles.desktopRail}
+        aria-label="SAN WMS 빠른 메뉴"
+        onMouseEnter={openDrawerFromHover}
+        onMouseLeave={scheduleHoverClose}
+      >
         <Link href="/" className={styles.railBrand} aria-label="대시보드" title="대시보드">S</Link>
         <button
           type="button"
           className={styles.railMenuButton}
-          onClick={() => setDrawerOpen(true)}
-          aria-label="전체 메뉴 열기"
+          onClick={toggleDesktopDrawer}
+          aria-label={drawerPinned ? "고정 메뉴 닫기" : "전체 메뉴 고정 열기"}
           aria-expanded={drawerOpen}
           aria-controls="san-wms-navigation-drawer"
-          title="전체 메뉴"
+          title={drawerPinned ? "메뉴 고정 해제" : "마우스를 올리면 자동으로 열립니다 · 클릭하면 고정"}
         >
           ☰
         </button>
@@ -190,19 +245,21 @@ function ShellContent({ children }: { children: React.ReactNode }) {
         type="button"
         aria-label="메뉴 닫기"
         className={`${styles.drawerBackdrop} ${drawerOpen ? styles.drawerBackdropOpen : ""}`}
-        onClick={() => setDrawerOpen(false)}
+        onClick={closeDrawer}
       />
       <aside
         id="san-wms-navigation-drawer"
         className={`${styles.drawer} ${drawerOpen ? styles.drawerOpen : ""}`}
         aria-hidden={!drawerOpen}
         inert={!drawerOpen}
+        onMouseEnter={cancelHoverClose}
+        onMouseLeave={scheduleHoverClose}
       >
         <div className={styles.drawerHeader}>
           <Brand />
-          <button type="button" className={styles.drawerClose} onClick={() => setDrawerOpen(false)} aria-label="메뉴 닫기">×</button>
+          <button type="button" className={styles.drawerClose} onClick={closeDrawer} aria-label="메뉴 닫기">×</button>
         </div>
-        <NavigationLinks onNavigate={() => setDrawerOpen(false)} />
+        <NavigationLinks onNavigate={closeDrawer} />
         <SessionPanel />
       </aside>
 
@@ -211,7 +268,7 @@ function ShellContent({ children }: { children: React.ReactNode }) {
           <button
             type="button"
             className={styles.mobileMenuButton}
-            onClick={() => setDrawerOpen(true)}
+            onClick={openDrawer}
             aria-label="전체 메뉴 열기"
             aria-expanded={drawerOpen}
             aria-controls="san-wms-navigation-drawer"
@@ -244,7 +301,7 @@ function ShellContent({ children }: { children: React.ReactNode }) {
             <span className={styles.bottomLabel}>{item.label}</span>
           </Link>
         ))}
-        <button type="button" className={styles.bottomMore} onClick={() => setDrawerOpen(true)} aria-label="전체 메뉴 열기">
+        <button type="button" className={styles.bottomMore} onClick={openDrawer} aria-label="전체 메뉴 열기">
           <span className={styles.bottomIcon} aria-hidden="true">☰</span>
           <span className={styles.bottomLabel}>전체</span>
         </button>
