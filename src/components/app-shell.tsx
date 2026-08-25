@@ -169,7 +169,11 @@ function ShellContent({ children }: { children: React.ReactNode }) {
         className={`${styles.drawerBackdrop} ${drawerOpen ? styles.drawerBackdropOpen : ""}`}
         onClick={() => setDrawerOpen(false)}
       />
-      <aside className={`${styles.drawer} ${drawerOpen ? styles.drawerOpen : ""}`} aria-hidden={!drawerOpen}>
+      <aside
+        className={`${styles.drawer} ${drawerOpen ? styles.drawerOpen : ""}`}
+        aria-hidden={!drawerOpen}
+        inert={!drawerOpen}
+      >
         <div className={styles.drawerHeader}>
           <Brand />
           <button type="button" className={styles.drawerClose} onClick={() => setDrawerOpen(false)} aria-label="메뉴 닫기">×</button>
@@ -200,7 +204,11 @@ function ShellContent({ children }: { children: React.ReactNode }) {
         <main className={styles.content}>{children}</main>
       </div>
 
-      <nav className={styles.bottomNav} aria-label="모바일 빠른 메뉴">
+      <nav
+        className={styles.bottomNav}
+        aria-label="모바일 빠른 메뉴"
+        style={{ gridTemplateColumns: `repeat(${mobileNav.length + 1}, minmax(0, 1fr))` }}
+      >
         {mobileNav.map((item) => (
           <Link
             key={item.href}
