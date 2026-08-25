@@ -38,7 +38,7 @@ export interface BenefitRowOutcome {
 
 export interface BenefitWinnerOutcome {
   winnerRowId: string;
-  status: string;
+  status: "MATCHED" | "EXCLUDED" | "REVIEW";
   message?: string;
   matchedOrderRowId?: string;
 }
@@ -71,10 +71,6 @@ function normalized(value: unknown): string {
 
 function comparable(value: unknown): string {
   return normalized(value).replace(/\s+/g, " ").toUpperCase();
-}
-
-function phoneComparable(value: unknown): string {
-  return normalized(value).replace(/\D/g, "");
 }
 
 function keyPart(value: unknown): string {
@@ -124,8 +120,9 @@ function rewardFor(rule: BenefitRule, basis: number): number {
   if (rule.ruleType === "PER_ORDER" || rule.ruleType === "PER_SHIPMENT") {
     reward = basis > 0 ? rule.rewardQuantity : 0;
   } else if (basis >= rule.thresholdValue) {
-    if (rule.oneTimeOnly || !rule.repeatEnabled) reward = rule.rewardQuantity;
-    else reward = Math.floor(basis / rule.thresholdValue) * rule.rewardQuantity;
+    reward = rule.oneTimeOnly || !rule.repeatEnabled
+      ? rule.rewardQuantity
+      : Math.floor(basis / rule.thresholdValue) * rule.rewardQuantity;
   }
   if (rule.maximumRewardQuantity != null) reward = Math.min(reward, rule.maximumRewardQuantity);
   return reward;
@@ -133,6 +130,7 @@ function rewardFor(rule: BenefitRule, basis: number): number {
 
 interface Partition {
   key: string;
+  mall: string;
   shippingNo: string;
   orderNo: string;
   eventType: string;
@@ -144,11 +142,10 @@ interface Partition {
   isWinner: boolean;
   isPhotoBenefit: boolean;
   benefits: BenefitAward[];
-  reviews: string[];
 }
 
-function partitionKey(row: Pick<BenefitOrderRow, "shippingNo" | "orderNo" | "eventType">): string {
-  return `${keyPart(row.shippingNo)}::${keyPart(row.orderNo)}::${keyPart(row.eventType)}`;
+function partitionKey(row: Pick<BenefitOrderRow, "mall" | "shippingNo" | "orderNo" | "eventType">): string {
+  return `${keyPart(row.mall)}::${keyPart(row.shippingNo)}::${keyPart(row.orderNo)}::${keyPart(row.eventType)}`;
 }
 
 function winnerKey(mall: string, orderNo: string, eventType: string): string {
@@ -166,6 +163,8 @@ export function calculateBenefits(input: {
   orderRows: BenefitOrderRow[];
   winnerRows?: BenefitWinnerRow[];
 }): BenefitCalculationOutput {
+  const classByRaw = new Map(input.classes.map((item) => [item.classificationRaw, item]));
+  const classById = new Map(input.classes.map((item) => [item.id, item]));
   const selectedTypes = new Set(input.classes.filter((item) => item.isSelected).map((item) => item.eventType));
   const rowOutcomes: Record<string, BenefitRowOutcome> = {};
   const activeRows: BenefitOrderRow[] = [];
@@ -173,17 +172,18 @@ export function calculateBenefits(input: {
 
   const orderTypeSet = new Map<string, Set<string>>();
   for (const row of input.orderRows) {
-    if (row.eventType) {
-      const key = keyPart(row.orderNo);
-      const set = orderTypeSet.get(key) ?? new Set<string>();
-      set.add(row.eventType);
-      orderTypeSet.set(key, set);
-    }
+    if (!row.eventType) continue;
+    const key = `${keyPart(row.mall)}::${keyPart(row.orderNo)}`;
+    const set = orderTypeSet.get(key) ?? new Set<string>();
+    set.add(row.eventType);
+    orderTypeSet.set(key, set);
   }
 
   for (const row of input.orderRows) {
-    const mixedOrder = (orderTypeSet.get(keyPart(row.orderNo))?.size ?? 0) > 1;
+    const orderKey = `${keyPart(row.mall)}::${keyPart(row.orderNo)}`;
+    const mixedOrder = (orderTypeSet.get(orderKey)?.size ?? 0) > 1;
     const cancelDisposition = getCancelDisposition(input.event, row.cancelStatus);
+    const rowClass = row.classificationRaw ? classByRaw.get(row.classificationRaw) : undefined;
     let status: BenefitRowOutcome["calculationStatus"] = "OK";
     let message = "";
 
@@ -193,12 +193,15 @@ export function calculateBenefits(input: {
     } else if (cancelDisposition === "REVIEW") {
       status = "REVIEW";
       message = `알 수 없는 취소구분 '${row.cancelStatus || "(빈 값)"}'`;
-    } else if (row.classificationStatus === "REVIEW" || !row.eventType) {
+    } else if (row.classificationStatus === "REVIEW" || !row.eventType || !row.classificationRaw) {
       status = "REVIEW";
       message = row.reviewMessage || "행사 유형 분류 확인 필요";
-    } else if (!selectedTypes.has(row.eventType)) {
+    } else if (!rowClass) {
+      status = "REVIEW";
+      message = "현재 행사에 연결된 분류 정보를 찾을 수 없습니다.";
+    } else if (!rowClass.isSelected) {
       status = "EXCLUDED";
-      message = `이번 계산에서 '${row.eventType}' 유형 선택 해제`;
+      message = `이번 계산에서 '[${row.classificationRaw}]' 분류 선택 해제`;
     }
 
     rowOutcomes[row.id] = {
@@ -216,16 +219,26 @@ export function calculateBenefits(input: {
     };
 
     if (status === "OK") activeRows.push(row);
-    if (status === "REVIEW") reviewMessages.add(`${row.id}:${message}`);
+    if (status === "REVIEW") reviewMessages.add(`order:${row.id}:${message}`);
   }
 
   const partitions = new Map<string, Partition>();
   for (const row of activeRows) {
     const key = partitionKey(row);
     const partition = partitions.get(key) ?? {
-      key, shippingNo: row.shippingNo, orderNo: row.orderNo, eventType: row.eventType || "",
-      rows: [], purchaseQty: 0, purchaseAmount: 0, onsitePickupQty: 0, warehouseShipQty: 0,
-      isWinner: false, isPhotoBenefit: false, benefits: [], reviews: [],
+      key,
+      mall: row.mall,
+      shippingNo: row.shippingNo,
+      orderNo: row.orderNo,
+      eventType: row.eventType || "",
+      rows: [],
+      purchaseQty: 0,
+      purchaseAmount: 0,
+      onsitePickupQty: 0,
+      warehouseShipQty: 0,
+      isWinner: false,
+      isPhotoBenefit: false,
+      benefits: [],
     };
     partition.rows.push(row);
     partition.purchaseQty += row.quantity;
@@ -238,17 +251,26 @@ export function calculateBenefits(input: {
   const benefitTotals: Record<string, { quantity: number; unit: string }> = {};
 
   for (const rule of activeRules) {
-    const allowedTypes = new Set(rule.eventTypes);
-    const matchingRows = activeRows.filter((row) => row.eventType && allowedTypes.has(row.eventType));
+    const allowedClassIds = new Set(rule.classIds);
+    const matchingRows = activeRows.filter((row) => {
+      const classId = row.classificationRaw ? classByRaw.get(row.classificationRaw)?.id : undefined;
+      return Boolean(classId && allowedClassIds.has(classId));
+    });
     if (!matchingRows.length) continue;
 
+    const distinctRuleTypes = new Set(rule.classIds.map((classId) => classById.get(classId)?.eventType).filter(Boolean));
     const groups = new Map<string, BenefitOrderRow[]>();
     for (const row of matchingRows) {
-      let groupKey = "";
-      if (rule.ruleType === "PER_SHIPMENT") groupKey = `SHIP::${keyPart(row.shippingNo)}`;
-      else if (rule.ruleType === "PER_ORDER") groupKey = `ORDER::${keyPart(row.orderNo)}`;
-      else if (rule.eventTypes.length > 1) groupKey = `COMMON::${keyPart(row.shippingNo)}::${keyPart(row.orderNo)}`;
-      else groupKey = `TYPE::${partitionKey(row)}`;
+      let groupKey: string;
+      if (rule.ruleType === "PER_SHIPMENT") {
+        groupKey = `SHIP::${keyPart(row.mall)}::${keyPart(row.shippingNo)}`;
+      } else if (rule.ruleType === "PER_ORDER") {
+        groupKey = `ORDER::${keyPart(row.mall)}::${keyPart(row.orderNo)}`;
+      } else if (distinctRuleTypes.size > 1) {
+        groupKey = `COMMON::${keyPart(row.mall)}::${keyPart(row.shippingNo)}::${keyPart(row.orderNo)}`;
+      } else {
+        groupKey = `TYPE::${partitionKey(row)}`;
+      }
       groups.set(groupKey, [...(groups.get(groupKey) ?? []), row]);
     }
 
@@ -293,10 +315,14 @@ export function calculateBenefits(input: {
         reviewMessages.add(`winner:${winner.id}:${message}`);
         continue;
       }
-      if (!selectedTypes.has(type)) {
+
+      const winnerClass = winner.classificationRaw ? classByRaw.get(winner.classificationRaw) : undefined;
+      const winnerTypeSelected = winnerClass ? winnerClass.isSelected : selectedTypes.has(type);
+      if (!winnerTypeSelected) {
         winnerOutcomes.push({ winnerRowId: winner.id, status: "EXCLUDED", message: `이번 계산에서 '${type}' 유형 선택 해제` });
         continue;
       }
+
       const key = winnerKey(winner.mall, winner.orderNo, type);
       if ((winnersByKey.get(key)?.length ?? 0) > 1) {
         const message = "동일 몰 + 주문번호 + 행사유형의 중복 당첨자 행입니다.";
@@ -306,14 +332,14 @@ export function calculateBenefits(input: {
       }
 
       const candidatePartitions = [...partitions.values()].filter((partition) =>
-        keyPart(partition.orderNo) === keyPart(winner.orderNo)
-        && keyPart(partition.eventType) === keyPart(type)
-        && partition.rows.some((row) => keyPart(row.mall) === keyPart(winner.mall)),
+        keyPart(partition.mall) === keyPart(winner.mall)
+        && keyPart(partition.orderNo) === keyPart(winner.orderNo)
+        && keyPart(partition.eventType) === keyPart(type),
       );
       if (candidatePartitions.length !== 1) {
         const message = candidatePartitions.length === 0
           ? "몰 + 주문번호 + 행사유형에 일치하는 주문을 찾지 못했습니다."
-          : "당첨 유형을 하나의 주문 묶음으로 특정할 수 없습니다.";
+          : "당첨 유형이 여러 배송 묶음에 걸쳐 있어 하나로 특정할 수 없습니다.";
         winnerOutcomes.push({ winnerRowId: winner.id, status: "REVIEW", message });
         reviewMessages.add(`winner:${winner.id}:${message}`);
         continue;
@@ -321,16 +347,16 @@ export function calculateBenefits(input: {
 
       const partition = candidatePartitions[0];
       const representative = firstRow(partition.rows);
-      const nameMismatch = normalized(winner.ordererName) && normalized(representative.ordererName)
+      const nameMismatch = normalized(winner.ordererName)
+        && normalized(representative.ordererName)
         && comparable(winner.ordererName) !== comparable(representative.ordererName);
-      const phoneMismatch = phoneComparable(winner.ordererPhone) && phoneComparable(representative.ordererPhone)
-        && phoneComparable(winner.ordererPhone) !== phoneComparable(representative.ordererPhone);
-      if (nameMismatch || phoneMismatch) {
-        const message = `당첨자 정보 불일치${nameMismatch ? " · 주문자명" : ""}${phoneMismatch ? " · 전화번호" : ""}`;
+      if (nameMismatch) {
+        const message = "당첨자 정보 불일치 · 주문자명";
         winnerOutcomes.push({ winnerRowId: winner.id, status: "REVIEW", message, matchedOrderRowId: representative.id });
         reviewMessages.add(`winner:${winner.id}:${message}`);
         continue;
       }
+
       if (partition.purchaseQty < 1) {
         const message = "현장수령 차감 후 물류 출고수량이 음수가 될 수 있습니다.";
         winnerOutcomes.push({ winnerRowId: winner.id, status: "REVIEW", message, matchedOrderRowId: representative.id });
@@ -343,7 +369,8 @@ export function calculateBenefits(input: {
       partition.isWinner = true;
       partition.isPhotoBenefit = partition.isPhotoBenefit || winner.isPhotoBenefit;
 
-      const deductionRow = [...partition.rows].sort((a, b) => a.sourceRowNumber - b.sourceRowNumber)
+      const deductionRow = [...partition.rows]
+        .sort((a, b) => a.sourceRowNumber - b.sourceRowNumber)
         .find((row) => rowOutcomes[row.id].warehouseShipQty > 0);
       if (deductionRow) {
         rowOutcomes[deductionRow.id].onsitePickupQty += 1;
@@ -368,15 +395,14 @@ export function calculateBenefits(input: {
       isWinner: partition.isWinner,
       isPhotoBenefit: partition.isPhotoBenefit,
       benefits: partition.benefits,
-      calculationStatus: partition.reviews.length ? "REVIEW" : "OK",
-      reviewMessage: partition.reviews.join(" · ") || undefined,
+      calculationStatus: "OK",
       representativeSourceRowId: representative.id,
     };
   });
 
   const activeRowIds = new Set(activeRows.map((row) => row.id));
-  const shippingSet = new Set(activeRows.map((row) => row.shippingNo).filter(Boolean));
-  const orderSet = new Set(activeRows.map((row) => row.orderNo).filter(Boolean));
+  const shippingSet = new Set(activeRows.map((row) => `${keyPart(row.mall)}::${keyPart(row.shippingNo)}`).filter(Boolean));
+  const orderSet = new Set(activeRows.map((row) => `${keyPart(row.mall)}::${keyPart(row.orderNo)}`).filter(Boolean));
   const eventTypeQty: Record<string, number> = {};
   for (const row of activeRows) eventTypeQty[row.eventType || "미분류"] = (eventTypeQty[row.eventType || "미분류"] ?? 0) + row.quantity;
   const winnerMatched = winnerOutcomes.filter((item) => item.status === "MATCHED");
@@ -394,5 +420,11 @@ export function calculateBenefits(input: {
     reviewCount: reviewMessages.size,
   };
 
-  return { summary, rowOutcomes, winnerOutcomes, results, reviewRequired: reviewMessages.size > 0 };
+  return {
+    summary,
+    rowOutcomes,
+    winnerOutcomes,
+    results,
+    reviewRequired: reviewMessages.size > 0,
+  };
 }
