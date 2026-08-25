@@ -34,6 +34,7 @@ export interface DashboardFlowStats {
 }
 
 const PAGE_SIZE = 1000;
+const FLOW_AGGREGATION_MODE = "REAL_FLOW_EXCLUDE_TRANSFER_0700";
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -144,12 +145,16 @@ export async function getDashboardFlowStats(
   if (error) {
     const message = error.message || "";
     if (message.includes("get_dashboard_flow_stats") || message.includes("schema cache") || message.includes("Could not find")) {
-      throw new Error("실시간 입출고 현황 DB 기능이 아직 적용되지 않았습니다. SQL 41을 실행하세요.");
+      throw new Error("실시간 입출고 현황 DB 기능이 아직 적용되지 않았습니다. SQL 42를 실행하세요.");
     }
     throw new Error(message);
   }
 
   const row = asRecord(data);
+  if (String(row.aggregation_mode ?? "") !== FLOW_AGGREGATION_MODE) {
+    throw new Error("실시간 입출고 현황 집계 기준이 구버전입니다. SQL 42를 실행하세요.");
+  }
+
   return {
     period: String(row.period ?? period) as DashboardFlowPeriod,
     anchorDate: String(row.anchor_date ?? anchorDate),
