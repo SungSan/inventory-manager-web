@@ -13,5 +13,27 @@ jobs:
         with:
           node-version: 22
       - run: npm install --no-audit --no-fund
-      - run: npm run typecheck
-      - run: npm run build
+      - name: Typecheck
+        run: |
+          set +e
+          npm run typecheck > typecheck.log 2>&1
+          code=$?
+          cat typecheck.log
+          exit $code
+      - name: Build
+        if: success()
+        run: |
+          set +e
+          npm run build > build.log 2>&1
+          code=$?
+          cat build.log
+          exit $code
+      - name: Upload validation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-7-0-validation-logs
+          path: |
+            typecheck.log
+            build.log
+          if-no-files-found: ignore
