@@ -1,0 +1,235 @@
+.flowPanel {
+  display: grid;
+  gap: 18px;
+}
+
+.flowHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.liveBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #166534;
+}
+
+.liveDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #22c55e;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.13);
+}
+
+.periodTabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.periodTab {
+  border: 1px solid #d7dee7;
+  background: #fff;
+  border-radius: 10px;
+  padding: 9px 15px;
+  cursor: pointer;
+  font-weight: 700;
+  color: #5b6775;
+}
+
+.periodTabActive {
+  border-color: #17212b;
+  background: #17212b;
+  color: #fff;
+}
+
+.periodControls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 0 2px;
+}
+
+.periodNavigation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.periodLabel {
+  min-width: 190px;
+  text-align: center;
+  font-weight: 800;
+  font-size: 1.03rem;
+}
+
+.directPicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.directPicker label {
+  font-size: 0.85rem;
+  color: #64748b;
+  font-weight: 700;
+}
+
+.directPicker input {
+  min-width: 140px;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.summaryCard {
+  border: 1px solid #dce3eb;
+  border-radius: 14px;
+  padding: 16px;
+  background: #fff;
+}
+
+.summaryCard span {
+  display: block;
+  color: #64748b;
+  font-size: 0.88rem;
+  margin-bottom: 8px;
+}
+
+.summaryCard strong {
+  font-size: clamp(1.4rem, 2.3vw, 2rem);
+  letter-spacing: -0.03em;
+}
+
+.summaryCard small {
+  display: block;
+  margin-top: 6px;
+  color: #8793a2;
+}
+
+.seriesWrap {
+  max-height: 455px;
+  overflow: auto;
+  border: 1px solid #e1e7ee;
+  border-radius: 12px;
+}
+
+.seriesHeader,
+.seriesRow {
+  display: grid;
+  grid-template-columns: 88px minmax(220px, 1fr) 92px minmax(220px, 1fr) 92px;
+  align-items: center;
+  gap: 12px;
+  min-width: 760px;
+}
+
+.seriesHeader {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 10px 14px;
+  background: #f6f8fa;
+  border-bottom: 1px solid #e1e7ee;
+  color: #64748b;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.seriesRow {
+  padding: 10px 14px;
+  border-bottom: 1px solid #eef2f6;
+}
+
+.seriesRow:last-child {
+  border-bottom: 0;
+}
+
+.bucketLabel {
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.barTrack {
+  height: 13px;
+  border-radius: 999px;
+  background: #eef2f6;
+  overflow: hidden;
+}
+
+.barInbound,
+.barOutbound {
+  height: 100%;
+  min-width: 0;
+  border-radius: 999px;
+  transition: width 180ms ease;
+}
+
+.barInbound {
+  background: #2563eb;
+}
+
+.barOutbound {
+  background: #f97316;
+}
+
+.qtyValue {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.qtyValue small {
+  color: #8793a2;
+  margin-left: 4px;
+}
+
+.emptySeries {
+  padding: 28px;
+  text-align: center;
+  color: #7a8795;
+}
+
+@media (max-width: 900px) {
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .periodLabel {
+    min-width: auto;
+    order: -1;
+    width: 100%;
+    text-align: left;
+  }
+}
+
+@media (max-width: 560px) {
+  .summaryGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .summaryCard {
+    padding: 13px;
+  }
+
+  .periodTabs {
+    width: 100%;
+  }
+
+  .periodTab {
+    flex: 1 1 calc(50% - 8px);
+  }
+}
