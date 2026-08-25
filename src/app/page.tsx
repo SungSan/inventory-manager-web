@@ -1,12 +1,16 @@
 "use client";
 
-import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useUser } from "@/components/user-provider";
-import { getDashboardMetrics, type DashboardMetrics } from "@/lib/dashboard-api";
-import { hasPermission } from "@/lib/permissions";
-import { listRecentTransactions, listScanEvents, subscribeToInventory } from "@/lib/inventory-api";
-import type { InventoryTransaction, ScanEvent } from "@/types/domain";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  getDashboardFlowStats,
+  getDashboardMetrics,
+  type DashboardFlowPeriod,
+  type DashboardFlowStats,
+  type DashboardMetrics,
+} from "@/lib/dashboard-api";
+import { listScanEvents, subscribeToInventory } from "@/lib/inventory-api";
+import type { ScanEvent } from "@/types/domain";
+import styles from "./dashboard.module.css";
 
 const emptyMetrics: DashboardMetrics = {
   totalQty: 0,
@@ -15,55 +19,229 @@ const emptyMetrics: DashboardMetrics = {
   lowStock: 0,
 };
 
-export default function DashboardPage() {
-  const { user } = useUser();
-  const [overview, setOverview] = useState<DashboardMetrics>(emptyMetrics);
-  const [transactions, setTransactions] = useState<InventoryTransaction[]>([]);
-  const [scans, setScans] = useState<ScanEvent[]>([]);
-  const [error, setError] = useState("");
+const periodOptions: Array<{ value: DashboardFlowPeriod; label: string }> = [
+  { value: "DAY", label: "일간" },
+  { value: "WEEK", label: "주간" },
+  { value: "MONTH", label: "월간" },
+  { value: "YEAR", label: "연간" },
+];
 
-  const load = useCallback(async () => {
+function kstToday(): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function shiftAnchor(anchor: string, period: DashboardFlowPeriod, amount: number): string {
+  const [year, month, day] = anchor.split("-").map(Number);
+  const date = new Date(Date.UTC(year, Math.max(0, month - 1), day || 1));
+
+  if (period === "DAY") date.setUTCDate(date.getUTCDate() + amount);
+  if (period === "WEEK") date.setUTCDate(date.getUTCDate() + amount * 7);
+  if (period === "MONTH") {
+    date.setUTCDate(1);
+    date.setUTCMonth(date.getUTCMonth() + amount);
+  }
+  if (period === "YEAR") {
+    date.setUTCMonth(0, 1);
+    date.setUTCFullYear(date.getUTCFullYear() + amount);
+  }
+
+  return date.toISOString().slice(0, 10);
+}
+
+function currentPeriodLabel(period: DashboardFlowPeriod): string {
+  if (period === "DAY") return "오늘";
+  if (period === "WEEK") return "이번 주";
+  if (period === "MONTH") return "이번 달";
+  return "올해";
+}
+
+function fallbackPeriodLabel(period: DashboardFlowPeriod, anchor: string): string {
+  if (period === "MONTH") return anchor.slice(0, 7);
+  if (period === "YEAR") return anchor.slice(0, 4);
+  return anchor;
+}
+
+export default function DashboardPage() {
+  const [overview, setOverview] = useState<DashboardMetrics>(emptyMetrics);
+  const [scans, setScans] = useState<ScanEvent[]>([]);
+  const [overviewError, setOverviewError] = useState("");
+  const [period, setPeriod] = useState<DashboardFlowPeriod>("DAY");
+  const [anchorDate, setAnchorDate] = useState(kstToday);
+  const [flow, setFlow] = useState<DashboardFlowStats | null>(null);
+  const [flowError, setFlowError] = useState("");
+  const [flowLoading, setFlowLoading] = useState(true);
+  const flowRequestId = useRef(0);
+
+  const loadOverview = useCallback(async () => {
     try {
-      const [metrics, recent, scanRows] = await Promise.all([
+      const [metrics, scanRows] = await Promise.all([
         getDashboardMetrics(),
-        listRecentTransactions(8),
         listScanEvents("", "ALL", 100),
       ]);
       setOverview(metrics);
-      setTransactions(recent);
       setScans(scanRows);
-      setError("");
+      setOverviewError("");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "데이터를 불러오지 못했습니다.");
+      setOverviewError(cause instanceof Error ? cause.message : "재고 현황을 불러오지 못했습니다.");
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-    return subscribeToInventory(load, { scope: "dashboard", fallbackMs: 60_000 });
-  }, [load]);
+  const loadFlow = useCallback(async () => {
+    const requestId = ++flowRequestId.current;
+    setFlowLoading(true);
+    try {
+      const result = await getDashboardFlowStats(period, anchorDate);
+      if (requestId !== flowRequestId.current) return;
+      setFlow(result);
+      setFlowError("");
+    } catch (cause) {
+      if (requestId !== flowRequestId.current) return;
+      setFlowError(cause instanceof Error ? cause.message : "입출고 현황을 불러오지 못했습니다.");
+    } finally {
+      if (requestId === flowRequestId.current) setFlowLoading(false);
+    }
+  }, [anchorDate, period]);
+
+  useEffect(() => { void loadOverview(); }, [loadOverview]);
+  useEffect(() => { void loadFlow(); }, [loadFlow]);
+
+  useEffect(() => subscribeToInventory(() => {
+    void loadOverview();
+    void loadFlow();
+  }, { scope: "dashboard", fallbackMs: 60_000 }), [loadFlow, loadOverview]);
 
   const metrics = useMemo(() => ({
     ...overview,
     scanFailures: scans.filter((item) => item.result !== "SUCCESS").length,
   }), [overview, scans]);
 
+  const maxFlowQty = useMemo(() => Math.max(
+    1,
+    ...(flow?.series.flatMap((item) => [item.inboundQty, item.outboundQty]) ?? [0]),
+  ), [flow]);
+
+  const periodLabel = flow?.periodLabel ?? fallbackPeriodLabel(period, anchorDate);
+
+  function selectPeriod(next: DashboardFlowPeriod) {
+    setPeriod(next);
+  }
+
+  function movePeriod(amount: number) {
+    setAnchorDate((current) => shiftAnchor(current, period, amount));
+  }
+
+  function resetPeriod() {
+    setAnchorDate(kstToday());
+  }
+
   return <div className="page-stack">
     <section><p className="eyebrow">OVERVIEW</p><h2>실시간 재고 현황</h2></section>
-    {error ? <p className="inline-error">{error}</p> : null}
-    <section className="metric-grid five"><article className="metric-card"><span>총 재고</span><strong>{metrics.totalQty.toLocaleString()}</strong></article><article className="metric-card"><span>활성 상품</span><strong>{metrics.skuCount.toLocaleString()}</strong></article><article className="metric-card"><span>활성 로케이션</span><strong>{metrics.locationCount.toLocaleString()}</strong></article><article className="metric-card"><span>5개 이하</span><strong>{metrics.lowStock.toLocaleString()}</strong></article><article className="metric-card"><span>최근 스캔 오류</span><strong>{metrics.scanFailures.toLocaleString()}</strong></article></section>
+    {overviewError ? <p className="inline-error">{overviewError}</p> : null}
+    <section className="metric-grid five">
+      <article className="metric-card"><span>총 재고</span><strong>{metrics.totalQty.toLocaleString()}</strong></article>
+      <article className="metric-card"><span>활성 상품</span><strong>{metrics.skuCount.toLocaleString()}</strong></article>
+      <article className="metric-card"><span>활성 로케이션</span><strong>{metrics.locationCount.toLocaleString()}</strong></article>
+      <article className="metric-card"><span>5개 이하</span><strong>{metrics.lowStock.toLocaleString()}</strong></article>
+      <article className="metric-card"><span>최근 스캔 오류</span><strong>{metrics.scanFailures.toLocaleString()}</strong></article>
+    </section>
 
-    {user ? <section className="quick-grid">
-      {hasPermission(user.role, "scan_inventory") ? <Link href="/scan" className="quick-card"><strong>입고·출고 시작</strong><span>상품과 로케이션 바코드 스캔</span></Link> : null}
-      {hasPermission(user.role, "transfer_inventory") ? <Link href="/transfers" className="quick-card"><strong>재고 이관</strong><span>진행 중 업무 저장·재개 및 LOC 간 이동</span></Link> : null}
-      {hasPermission(user.role, "view_inventory") ? <Link href="/location-map" className="quick-card"><strong>로케이션맵</strong><span>점유·빈 로케이션과 상세 재고 확인</span></Link> : null}
-      {hasPermission(user.role, "manage_products") ? <Link href="/products" className="quick-card"><strong>신규 상품 등록</strong><span>대표 바코드와 동시에 생성</span></Link> : null}
-      {hasPermission(user.role, "manage_barcodes") ? <Link href="/barcodes" className="quick-card"><strong>바코드 연결</strong><span>추가 번호·대표·라벨 관리</span></Link> : null}
-      {hasPermission(user.role, "view_logs") ? <Link href="/logs" className="quick-card"><strong>작업 로그</strong><span>거래·스캔·감사 내역 확인</span></Link> : null}
-    </section> : null}
+    <section className={`panel ${styles.flowPanel}`}>
+      <div className={styles.flowHeader}>
+        <div>
+          <p className="eyebrow">LIVE FLOW</p>
+          <h3>실시간 입출고 현황</h3>
+          <p className="muted">한국시간 기준 · 유효한 입고/출고 거래를 기간별로 집계합니다.</p>
+        </div>
+        <span className={styles.liveBadge}><span className={styles.liveDot} />실시간 갱신</span>
+      </div>
 
-    <section className="panel"><div className="section-heading"><div><p className="eyebrow">RECENT</p><h3>최근 입출고</h3></div><Link className="text-link" href="/logs">전체 로그 보기</Link></div>
-      {transactions.length === 0 ? <p className="empty-state">아직 처리된 입출고가 없습니다.</p> : <div className="table-wrap"><table><thead><tr><th>시간</th><th>상태</th><th>구분</th><th>상품</th><th>로케이션</th><th>수량</th><th>처리 후</th><th>작업자</th></tr></thead><tbody>{transactions.map((tx) => <tr key={tx.id}><td>{new Date(tx.createdAt).toLocaleString("ko-KR")}</td><td><span className={`status-badge ${tx.status.toLowerCase()}`}>{tx.status}</span></td><td><span className={`operation ${tx.operation.toLowerCase()}`}>{tx.operation}</span></td><td>{tx.productLabel}</td><td>{tx.locationCode}</td><td>{tx.qty.toLocaleString()}</td><td>{tx.afterQty.toLocaleString()}</td><td>{tx.actorLabel}</td></tr>)}</tbody></table></div>}
+      <div className={styles.periodTabs} role="tablist" aria-label="입출고 조회 기간">
+        {periodOptions.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            role="tab"
+            aria-selected={period === option.value}
+            className={`${styles.periodTab} ${period === option.value ? styles.periodTabActive : ""}`}
+            onClick={() => selectPeriod(option.value)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+
+      <div className={styles.periodControls}>
+        <div className={styles.periodNavigation}>
+          <button type="button" className="button button-secondary button-compact" onClick={() => movePeriod(-1)}>← 이전</button>
+          <strong className={styles.periodLabel}>{periodLabel}</strong>
+          <button type="button" className="button button-secondary button-compact" onClick={() => movePeriod(1)}>다음 →</button>
+          <button type="button" className="button button-ghost button-compact" onClick={resetPeriod}>{currentPeriodLabel(period)}</button>
+        </div>
+
+        <div className={styles.directPicker}>
+          {period === "DAY" ? <>
+            <label htmlFor="dashboard-day">날짜 선택</label>
+            <input id="dashboard-day" type="date" value={anchorDate} onChange={(event) => event.target.value && setAnchorDate(event.target.value)} />
+          </> : null}
+          {period === "WEEK" ? <>
+            <label htmlFor="dashboard-week">포함 날짜</label>
+            <input id="dashboard-week" type="date" value={anchorDate} onChange={(event) => event.target.value && setAnchorDate(event.target.value)} />
+          </> : null}
+          {period === "MONTH" ? <>
+            <label htmlFor="dashboard-month">월 선택</label>
+            <input id="dashboard-month" type="month" value={anchorDate.slice(0, 7)} onChange={(event) => event.target.value && setAnchorDate(`${event.target.value}-01`)} />
+          </> : null}
+          {period === "YEAR" ? <>
+            <label htmlFor="dashboard-year">연도</label>
+            <input
+              id="dashboard-year"
+              type="number"
+              min="2020"
+              max="2100"
+              value={anchorDate.slice(0, 4)}
+              onChange={(event) => {
+                const year = Number(event.target.value);
+                if (Number.isInteger(year) && year >= 2020 && year <= 2100) setAnchorDate(`${year}-01-01`);
+              }}
+            />
+          </> : null}
+        </div>
+      </div>
+
+      {flowError ? <p className="inline-error">{flowError}</p> : null}
+
+      <div className={styles.summaryGrid} aria-busy={flowLoading}>
+        <article className={styles.summaryCard}><span>입고 수량</span><strong>{(flow?.inboundQty ?? 0).toLocaleString()}</strong><small>{(flow?.inboundCount ?? 0).toLocaleString()}건 처리</small></article>
+        <article className={styles.summaryCard}><span>출고 수량</span><strong>{(flow?.outboundQty ?? 0).toLocaleString()}</strong><small>{(flow?.outboundCount ?? 0).toLocaleString()}건 처리</small></article>
+        <article className={styles.summaryCard}><span>총 처리 수량</span><strong>{((flow?.inboundQty ?? 0) + (flow?.outboundQty ?? 0)).toLocaleString()}</strong><small>입고 + 출고</small></article>
+        <article className={styles.summaryCard}><span>총 처리 건수</span><strong>{((flow?.inboundCount ?? 0) + (flow?.outboundCount ?? 0)).toLocaleString()}</strong><small>유효 거래 기준</small></article>
+      </div>
+
+      <div className={styles.seriesWrap}>
+        <div className={styles.seriesHeader}>
+          <span>구간</span><span>입고</span><span>입고 수량</span><span>출고</span><span>출고 수량</span>
+        </div>
+        {flowLoading && !flow ? <div className={styles.emptySeries}>입출고 현황을 불러오는 중입니다.</div> : null}
+        {!flowLoading && flow && flow.series.length === 0 ? <div className={styles.emptySeries}>선택한 기간의 입출고 데이터가 없습니다.</div> : null}
+        {flow?.series.map((point) => (
+          <div className={styles.seriesRow} key={point.bucket}>
+            <span className={styles.bucketLabel}>{point.label}</span>
+            <div className={styles.barTrack} title={`입고 ${point.inboundQty.toLocaleString()}개`}><div className={styles.barInbound} style={{ width: `${(point.inboundQty / maxFlowQty) * 100}%` }} /></div>
+            <strong className={styles.qtyValue}>{point.inboundQty.toLocaleString()}<small>{point.inboundCount.toLocaleString()}건</small></strong>
+            <div className={styles.barTrack} title={`출고 ${point.outboundQty.toLocaleString()}개`}><div className={styles.barOutbound} style={{ width: `${(point.outboundQty / maxFlowQty) * 100}%` }} /></div>
+            <strong className={styles.qtyValue}>{point.outboundQty.toLocaleString()}<small>{point.outboundCount.toLocaleString()}건</small></strong>
+          </div>
+        ))}
+      </div>
+
+      {flow?.generatedAt ? <p className="small muted">마지막 집계: {new Date(flow.generatedAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</p> : null}
     </section>
   </div>;
 }
