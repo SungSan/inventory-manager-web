@@ -70,6 +70,6 @@ export function downloadBenefitResultXlsx(input:{eventName:string;orderRows:Bene
     if(outcome&&outcome.onsitePickupQty>0&&outcome.calculationStatus==="OK")record["수량"]=outcome.warehouseShipQty;
     return BENEFIT_ORDER_HEADERS.map((header)=>record[header]??"");
   });
-  const worksheet=XLSX.utils.aoa_to_sheet([BENEFIT_ORDER_HEADERS,...outputRows]);worksheet["!cols"]=BENEFIT_ORDER_HEADERS.map((header)=>({wch:header==="주문상품명(옵션포함)"?80:header==="수령인 주소(전체)"?45:Math.min(28,Math.max(12,header.length+3))}));
+  const worksheet=XLSX.utils.aoa_to_sheet([[...BENEFIT_ORDER_HEADERS],...outputRows]);worksheet["!cols"]=BENEFIT_ORDER_HEADERS.map((header)=>({wch:header==="주문상품명(옵션포함)"?80:header==="수령인 주소(전체)"?45:Math.min(28,Math.max(12,header.length+3))}));
   const workbook=XLSX.utils.book_new();XLSX.utils.book_append_sheet(workbook,worksheet,"송장 작업자료");const binary=XLSX.write(workbook,{type:"array",bookType:"xlsx"});const blob=new Blob([binary],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});const url=URL.createObjectURL(blob);const anchor=document.createElement("a");anchor.href=url;anchor.download=`${safeFileName(input.eventName)}_특전계산_${new Date().toISOString().slice(0,10)}.xlsx`;anchor.click();window.setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
