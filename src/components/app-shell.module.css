@@ -282,6 +282,16 @@
 .content { padding: 24px 24px 64px; }
 .bottomNav { display: none; }
 
+@media (min-width: 1200px) {
+  .drawerBackdrop,
+  .drawerBackdropOpen {
+    visibility: hidden;
+    pointer-events: none;
+    background: transparent;
+    opacity: 0;
+  }
+}
+
 @media (max-width: 1199px) {
   .desktopRail { display: none; }
   .workspace { margin-left: 0; }
