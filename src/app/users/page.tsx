@@ -5,6 +5,7 @@ import { Feedback, type FeedbackKind } from "@/components/feedback";
 import { PermissionGuard } from "@/components/permission-guard";
 import { useUser } from "@/components/user-provider";
 import { subscribeToInventory, updateUserRole } from "@/lib/inventory-api";
+import { adminListBenefitFeatureGrants, adminSetBenefitFeatureGrant } from "@/lib/benefit-api";
 import {
   adminDeleteUserAccount,
   adminRequireAllReconsent,
@@ -27,10 +28,15 @@ function formatDateTime(value?: string): string {
 function UsersContent() {
   const { user: currentUser } = useUser();
   const [users, setUsers] = useState<AdminUserSecurityStatus[]>([]);
+  const [benefitGrants, setBenefitGrants] = useState<Record<string, boolean>>({});
   const [showDeleted, setShowDeleted] = useState(false);
   const [busyId, setBusyId] = useState("");
   const [feedback, setFeedback] = useState<{ kind: FeedbackKind; title: string; body?: string } | null>(null);
-  const load = useCallback(async () => setUsers(await listAdminUserSecurityStatus()), []);
+  const load = useCallback(async () => {
+    const [nextUsers, grants] = await Promise.all([listAdminUserSecurityStatus(), adminListBenefitFeatureGrants()]);
+    setUsers(nextUsers);
+    setBenefitGrants(Object.fromEntries(grants.map((grant) => [grant.userId, grant.enabled])));
+  }, []);
   useEffect(() => { void load(); return subscribeToInventory(load, { scope: "users", fallbackMs: 60_000 }); }, [load]);
 
   const visibleUsers = useMemo(
@@ -65,6 +71,17 @@ function UsersContent() {
 
   async function changeRole(user: AdminUserSecurityStatus, role: UserRole) {
     await run(user.id, () => updateUserRole(user.id, role), `${user.assignedName || user.email} 권한을 ${roleLabels[role]}로 변경했습니다.`);
+  }
+
+  async function toggleBenefitFeature(user: AdminUserSecurityStatus) {
+    const next = !Boolean(benefitGrants[user.id]);
+    const reason = askReason(
+      next ? "특전 자동계산 사용 승인 사유를 입력하세요." : "특전 자동계산 사용 승인 회수 사유를 입력하세요.",
+      next ? "특전 업무 담당 계정 승인" : "특전 업무 권한 회수",
+    );
+    if (!reason) return;
+    if (!window.confirm(`${user.assignedName || user.email} 계정의 특전 자동계산 기능을 ${next ? "허용" : "차단"}할까요?\n\n역할 등급과는 별도로 적용됩니다.`)) return;
+    await run(user.id, () => adminSetBenefitFeatureGrant(user.id, next, reason), `특전 자동계산 기능을 ${next ? "허용" : "차단"}했습니다.`);
   }
 
   async function editAssignedName(user: AdminUserSecurityStatus) {
@@ -121,7 +138,7 @@ function UsersContent() {
 
   return <div className="page-stack">
     <section className="section-heading">
-      <div><p className="eyebrow">ACCESS & IDENTITY CONTROL</p><h2>사용자·본인확인 관리</h2><p className="muted">역할, 배정 이름, PIN·동의 상태, 마지막 로그인과 계정 사용 여부를 관리합니다. 삭제는 작업·동의·감사 이력을 보존하는 논리 삭제 방식이며 PIN 원문과 해시값은 노출되지 않습니다.</p></div>
+      <div><p className="eyebrow">ACCESS & IDENTITY CONTROL</p><h2>사용자·본인확인 관리</h2><p className="muted">역할, 계정 사용 여부와 별도로 특정 기능의 계정별 승인을 관리합니다. 특전 자동계산은 조회자도 별도 승인되면 사용할 수 있고, 매니저·관리자도 승인되지 않으면 메뉴와 데이터에 접근할 수 없습니다.</p></div>
       <div className="row-actions">
         <label className="checkbox-label"><input type="checkbox" checked={showDeleted} onChange={(event) => setShowDeleted(event.target.checked)} />삭제 사용자 표시 ({deletedCount})</label>
         <button className="button button-secondary" onClick={() => void requireAll()} disabled={busyId === "ALL"}>전체 사용자 재동의 요구</button>
@@ -130,12 +147,13 @@ function UsersContent() {
     {feedback ? <Feedback kind={feedback.kind} title={feedback.title}>{feedback.body}</Feedback> : null}
     <section className="panel">
       <div className="table-wrap"><table>
-        <thead><tr><th>사용자</th><th>로그인 ID·상태</th><th>마지막 로그인</th><th>역할</th><th>계정 유형</th><th>PIN</th><th>동의 상태</th><th>관리</th></tr></thead>
+        <thead><tr><th>사용자</th><th>로그인 ID·상태</th><th>마지막 로그인</th><th>역할</th><th>특전 자동계산</th><th>계정 유형</th><th>PIN</th><th>동의 상태</th><th>관리</th></tr></thead>
         <tbody>{visibleUsers.map((user) => {
           const busy = busyId === user.id;
           const deleted = Boolean(user.deletedAt);
           const isSelf = currentUser?.id === user.id;
           const editable = !busy && !deleted && user.active;
+          const benefitEnabled = Boolean(benefitGrants[user.id]);
           return <tr key={user.id}>
             <td><strong>{user.legalName || user.assignedName || "이름 미등록"}</strong><br/><small className="muted">배정: {user.assignedName || "-"}</small></td>
             <td>{user.email}<br/>
@@ -147,6 +165,7 @@ function UsersContent() {
             <td><select value={user.role} onChange={(event) => void changeRole(user, event.target.value as UserRole)} disabled={!editable || isSelf}>
               <option value="admin">관리자</option><option value="manager">매니저</option><option value="operator">작업자</option><option value="viewer">조회자</option>
             </select></td>
+            <td><span className={`status-badge ${benefitEnabled ? "success" : "inactive"}`}>{benefitEnabled ? "사용 허용" : "차단"}</span><br/><button className={`button button-compact ${benefitEnabled ? "button-danger" : "button-primary"}`} disabled={!editable} onClick={() => void toggleBenefitFeature(user)}>{benefitEnabled ? "승인 회수" : "사용 승인"}</button><br/><small className="muted">역할과 독립</small></td>
             <td><select value={user.accountType} onChange={(event) => void setAccountType(user, event.target.value as AdminUserSecurityStatus["accountType"])} disabled={!editable}>
               <option value="HUMAN">HUMAN</option><option value="SERVICE">SERVICE</option><option value="API">API</option><option value="AUTOMATION">AUTOMATION</option><option value="SYSTEM">SYSTEM</option>
             </select><br/><small className="muted">{user.isServiceAccount ? "최초 절차 제외" : "본인확인 대상"}</small></td>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AuthGate } from "@/components/auth-gate";
+import { useBenefitFeatureAccess } from "@/components/benefit-feature-guard";
 import { NumericInputGuard } from "@/components/numeric-input-guard";
 import { StocktakeLiveEnhancer } from "@/components/stocktake-live-enhancer";
 import { WorkRequestIndicator } from "@/components/work-request-indicator";
@@ -17,13 +18,16 @@ import { listUsers, subscribeToInventory } from "@/lib/inventory-api";
 import type { UserProfile } from "@/types/domain";
 import styles from "./app-shell.module.css";
 
-const nav: Array<{ href: string; label: string; permission: Permission }> = [
+type NavItem = { href: string; label: string; permission?: Permission; benefitFeature?: boolean };
+
+const nav: NavItem[] = [
   { href: "/", label: "대시보드", permission: "view_dashboard" },
   { href: "/scan", label: "입고·출고", permission: "scan_inventory" },
   { href: "/inventory", label: "재고조회", permission: "view_inventory" },
   { href: "/transfers", label: "재고이관", permission: "transfer_inventory" },
   { href: "/external-transfers", label: "외부이관", permission: "external_transfer" },
   { href: "/work-requests", label: "업무요청", permission: "work_requests" },
+  { href: "/benefits", label: "특전 자동계산", benefitFeature: true },
   { href: "/shipment-documents", label: "출고명세서", permission: "shipment_documents" },
   { href: "/products", label: "상품관리", permission: "manage_products" },
   { href: "/barcodes", label: "바코드", permission: "manage_barcodes" },
@@ -51,6 +55,7 @@ function isRouteActive(pathname: string, href: string): boolean {
 function ShellContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, switchDemoUser } = useUser();
+  const { allowed: benefitFeatureAllowed } = useBenefitFeatureAccess();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerPinned, setDrawerPinned] = useState(false);
@@ -130,8 +135,11 @@ function ShellContent({ children }: { children: React.ReactNode }) {
   }, [drawerOpen]);
 
   const visibleNav = useMemo(
-    () => user ? nav.filter((item) => hasPermission(user.role, item.permission)) : [],
-    [user],
+    () => user ? nav.filter((item) => {
+      if (item.benefitFeature) return benefitFeatureAllowed;
+      return item.permission ? hasPermission(user.role, item.permission) : false;
+    }) : [],
+    [user, benefitFeatureAllowed],
   );
 
   const mobileNav = useMemo(
