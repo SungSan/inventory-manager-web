@@ -219,9 +219,9 @@
 
 .location-detail-panel {
   position: sticky;
-  top: 16px;
+  top: 92px;
   min-width: 0;
-  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 108px);
   overflow: hidden;
 }
 
@@ -340,7 +340,7 @@
   }
 
   .location-detail-panel {
-    max-height: calc(100vh - 40px);
+    max-height: calc(100dvh - 116px);
   }
 }
 
