@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 import { AuthGate } from "@/components/auth-gate";
 import { useBenefitFeatureAccess } from "@/components/benefit-feature-guard";
 import { NumericInputGuard } from "@/components/numeric-input-guard";
@@ -19,6 +20,12 @@ import type { UserProfile } from "@/types/domain";
 import styles from "./app-shell.module.css";
 
 type NavItem = { href: string; label: string; permission?: Permission; benefitFeature?: boolean };
+type PresenceUser = { userId: string; displayName: string; pageLabel: string; path: string; onlineAt: number; lastActiveAt: number };
+type PresenceDisplay = PresenceUser & { disconnectedAt?: number };
+
+const AWAY_AFTER_MS = 10 * 60 * 1000;
+const OFFLINE_VISIBLE_MS = 10 * 60 * 1000;
+const ACTIVITY_TRACK_THROTTLE_MS = 30 * 1000;
 
 const nav: NavItem[] = [
   { href: "/", label: "대시보드", permission: "view_dashboard" },
@@ -50,6 +57,127 @@ const mobilePrimary = [
 
 function isRouteActive(pathname: string, href: string): boolean {
   return pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
+}
+
+function OnlinePresenceTicker({ user, pathname, pageLabel }: { user: UserProfile | null; pathname: string; pageLabel: string }) {
+  const [presenceUsers, setPresenceUsers] = useState<PresenceDisplay[]>([]);
+  const [clock, setClock] = useState(Date.now());
+  const channelRef = useRef<RealtimeChannel | null>(null);
+  const lastActiveAtRef = useRef(Date.now());
+  const lastTrackedAtRef = useRef(0);
+  const currentMetaRef = useRef({ pathname, pageLabel });
+  currentMetaRef.current = { pathname, pageLabel };
+
+  const ownPresence = useCallback((): PresenceUser | null => {
+    if (!user) return null;
+    return {
+      userId: user.id,
+      displayName: user.displayName,
+      pageLabel: currentMetaRef.current.pageLabel,
+      path: currentMetaRef.current.pathname,
+      onlineAt: Date.now(),
+      lastActiveAt: lastActiveAtRef.current,
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) { setPresenceUsers([]); return; }
+    const initialPresence = ownPresence();
+    if (!initialPresence) return;
+    if (isDemoMode()) { setPresenceUsers([initialPresence]); return; }
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+
+    const channel = supabase.channel("san-wms-online-users", { config: { presence: { key: user.id } } });
+    channelRef.current = channel;
+    const syncPresence = () => {
+      const latestByUser = new Map<string, PresenceUser>();
+      for (const presences of Object.values(channel.presenceState<PresenceUser>())) {
+        for (const presence of presences) {
+          if (!presence.userId || !presence.displayName) continue;
+          const previous = latestByUser.get(presence.userId);
+          if (!previous || presence.lastActiveAt >= previous.lastActiveAt) latestByUser.set(presence.userId, presence);
+        }
+      }
+      const detectedAt = Date.now();
+      setPresenceUsers((previous) => {
+        const next = new Map<string, PresenceDisplay>();
+        for (const presence of latestByUser.values()) next.set(presence.userId, presence);
+        for (const item of previous) {
+          if (!next.has(item.userId)) next.set(item.userId, { ...item, disconnectedAt: item.disconnectedAt ?? detectedAt });
+        }
+        return [...next.values()].sort((a, b) => a.displayName.localeCompare(b.displayName, "ko-KR"));
+      });
+    };
+
+    channel
+      .on("presence", { event: "sync" }, syncPresence)
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          lastTrackedAtRef.current = Date.now();
+          void channel.track(initialPresence);
+        }
+      });
+
+    return () => { channelRef.current = null; void supabase.removeChannel(channel); };
+  }, [ownPresence, user]);
+
+  useEffect(() => {
+    const presence = ownPresence();
+    if (!presence) return;
+    if (isDemoMode()) { setPresenceUsers([presence]); return; }
+    if (channelRef.current) {
+      lastTrackedAtRef.current = Date.now();
+      void channelRef.current.track(presence);
+    }
+  }, [ownPresence, pageLabel, pathname]);
+
+  useEffect(() => {
+    if (!user) return;
+    const recordActivity = () => {
+      const now = Date.now();
+      lastActiveAtRef.current = now;
+      if (now - lastTrackedAtRef.current < ACTIVITY_TRACK_THROTTLE_MS) return;
+      const presence = ownPresence();
+      if (!presence) return;
+      lastTrackedAtRef.current = now;
+      if (isDemoMode()) setPresenceUsers([presence]);
+      else if (channelRef.current) void channelRef.current.track(presence);
+    };
+    const events: Array<keyof WindowEventMap> = ["pointerdown", "pointermove", "keydown", "touchstart", "scroll", "focus"];
+    for (const eventName of events) window.addEventListener(eventName, recordActivity, { passive: true });
+    const timer = window.setInterval(() => setClock(Date.now()), 30_000);
+    return () => {
+      for (const eventName of events) window.removeEventListener(eventName, recordActivity);
+      window.clearInterval(timer);
+    };
+  }, [ownPresence, user]);
+
+  const visibleUsers = presenceUsers.filter((item) => !item.disconnectedAt || clock - item.disconnectedAt < OFFLINE_VISIBLE_MS);
+  const connectedCount = visibleUsers.filter((item) => !item.disconnectedAt).length;
+  const statusOf = (item: PresenceDisplay) => item.disconnectedAt ? "OFFLINE" : clock - item.lastActiveAt >= AWAY_AFTER_MS ? "AWAY" : "ACTIVE";
+  const statusLabel = { ACTIVE: "작업중", AWAY: "자리비움", OFFLINE: "접속종료" } as const;
+
+  return <details className={styles.presenceMenu}>
+    <summary className={styles.presenceSummary} aria-label={`접속 현황 ${visibleUsers.length}명`}>
+      <span className={`${styles.presencePulse} ${connectedCount === 0 ? styles.presencePulseIdle : ""}`} aria-hidden="true" />
+      <span>접속 {connectedCount}</span>
+    </summary>
+    <div className={styles.presencePopover}>
+      <div className={styles.presencePopoverHeader}><strong>접속 현황</strong><span>{visibleUsers.length}명</span></div>
+      <div className={styles.presenceList}>
+        {visibleUsers.length > 0 ? visibleUsers.map((item) => {
+          const status = statusOf(item);
+          return <div className={styles.presenceItem} key={item.userId}>
+            <span className={`${styles.presenceDot} ${styles[`presenceDot${status}`]}`} aria-hidden="true" />
+            <div className={styles.presenceIdentity}><strong>{item.displayName}</strong><small>{statusLabel[status]}</small></div>
+            <span>{item.pageLabel}</span>
+          </div>;
+        }) : <p className={styles.presenceEmpty}>접속자가 없습니다.</p>}
+      </div>
+      <div className={styles.presenceLegend}><span><i className={styles.presenceDotACTIVE} />10분 이내</span><span><i className={styles.presenceDotAWAY} />10분 이상</span><span><i className={styles.presenceDotOFFLINE} />종료 후 10분</span></div>
+    </div>
+  </details>;
 }
 
 function ShellContent({ children }: { children: React.ReactNode }) {
@@ -288,6 +416,7 @@ function ShellContent({ children }: { children: React.ReactNode }) {
             <h1>재고관리</h1>
           </div>
           <div className={styles.workspaceActions}>
+            <OnlinePresenceTicker user={user} pathname={pathname} pageLabel={currentNav?.label ?? "알 수 없는 화면"} />
             <WorkRequestIndicator />
           </div>
         </header>
