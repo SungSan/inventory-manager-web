@@ -148,6 +148,7 @@ input[type="checkbox"] { width: 18px; min-height: 18px; padding: 0; }
 }
 
 @media (max-width: 720px) {
+  html, body { overflow-x: visible; }
   .topbar { align-items: flex-start; padding: 16px 16px 10px; }
   .topbar-meta { max-width: 55%; }
   .user-chip { display: none; }

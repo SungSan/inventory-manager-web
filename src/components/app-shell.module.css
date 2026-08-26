@@ -379,6 +379,8 @@
 }
 
 @media (max-width: 720px) {
+  .shell { overflow-x: visible; }
+  .content { overflow-x: visible; }
   .workspaceHeader { min-height: 62px; padding: 10px 12px; }
   .workspaceTitle p { display: none; }
   .workspaceTitle h1 { font-size: 17px; }
