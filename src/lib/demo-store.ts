@@ -593,10 +593,19 @@ export async function demoListInventory(search = ""): Promise<InventoryRow[]> {
     .sort((a, b) => `${a.artist}${a.nameVer}${a.locationCode}`.localeCompare(`${b.artist}${b.nameVer}${b.locationCode}`));
 }
 
-export async function demoListTransactions(search = "", operation = "ALL", limit = 500): Promise<InventoryTransaction[]> {
+export async function demoListTransactions(
+  search = "",
+  operation = "ALL",
+  limit = 500,
+  kind: "INOUT" | "TRANSFER" | "ALL" = "ALL",
+  options: { startAt?: string; endBefore?: string } = {},
+): Promise<InventoryTransaction[]> {
   const keyword = search.trim().toUpperCase();
   return readState().transactions
     .filter((tx) => operation === "ALL" || tx.operation === operation)
+    .filter((tx) => kind === "ALL" || (kind === "TRANSFER" ? tx.referenceType === "TRANSFER" : tx.referenceType !== "TRANSFER"))
+    .filter((tx) => !options.startAt || tx.createdAt >= options.startAt)
+    .filter((tx) => !options.endBefore || tx.createdAt < options.endBefore)
     .filter((tx) => !keyword || [tx.productLabel, tx.locationCode, tx.productBarcodeValue, tx.locationBarcodeValue, tx.actorLabel ?? "", tx.note ?? ""]
       .some((value) => value.toUpperCase().includes(keyword)))
     .slice(0, limit);
@@ -814,17 +823,21 @@ export async function demoUpdateBarcode(barcodeId: string, patch: { active?: boo
   writeState(state);
 }
 
-export async function demoListScanEvents(search = "", result = "ALL", limit = 1000): Promise<ScanEvent[]> {
+export async function demoListScanEvents(search = "", result = "ALL", limit = 1000, options: { startAt?: string; endBefore?: string } = {}): Promise<ScanEvent[]> {
   const keyword = search.trim().toUpperCase();
   return readState().scanEvents
     .filter((event) => result === "ALL" || event.result === result)
+    .filter((event) => !options.startAt || event.createdAt >= options.startAt)
+    .filter((event) => !options.endBefore || event.createdAt < options.endBefore)
     .filter((event) => !keyword || [event.rawValue, event.targetLabel ?? "", event.actorLabel ?? "", event.context ?? ""].some((value) => value.toUpperCase().includes(keyword)))
     .slice(0, limit);
 }
 
-export async function demoListAuditLogs(search = "", limit = 1000): Promise<AuditLog[]> {
+export async function demoListAuditLogs(search = "", limit = 1000, options: { startAt?: string; endBefore?: string } = {}): Promise<AuditLog[]> {
   const keyword = search.trim().toUpperCase();
   return readState().auditLogs
+    .filter((log) => !options.startAt || log.createdAt >= options.startAt)
+    .filter((log) => !options.endBefore || log.createdAt < options.endBefore)
     .filter((event) => !keyword || [event.action, event.entityType, event.entityLabel ?? "", event.actorLabel ?? "", event.note ?? ""].some((value) => value.toUpperCase().includes(keyword)))
     .slice(0, limit);
 }

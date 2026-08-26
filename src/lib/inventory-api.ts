@@ -252,10 +252,27 @@ function mapTransaction(row: Record<string, unknown>): InventoryTransaction {
   };
 }
 
-export async function listTransactions(search = "", operation = "ALL", limit = 500): Promise<InventoryTransaction[]> {
-  if (isDemoMode()) return demoListTransactions(search, operation, limit);
+export interface LogQueryOptions {
+  startAt?: string;
+  endBefore?: string;
+}
+
+export type TransactionLogKind = "INOUT" | "TRANSFER" | "ALL";
+
+export async function listTransactions(
+  search = "",
+  operation = "ALL",
+  limit = 500,
+  kind: TransactionLogKind = "ALL",
+  options: LogQueryOptions = {},
+): Promise<InventoryTransaction[]> {
+  if (isDemoMode()) return demoListTransactions(search, operation, limit, kind, options);
   let query = client().from("inventory_transaction_view").select("*").order("created_at", { ascending: false }).limit(limit);
   if (operation !== "ALL") query = query.eq("operation", operation);
+  if (kind === "TRANSFER") query = query.eq("reference_type", "TRANSFER");
+  if (kind === "INOUT") query = query.or("reference_type.is.null,reference_type.neq.TRANSFER");
+  if (options.startAt) query = query.gte("created_at", options.startAt);
+  if (options.endBefore) query = query.lt("created_at", options.endBefore);
   if (search.trim()) query = query.ilike("search_text", `%${search.trim()}%`);
   const { data, error } = await query;
   if (error) throw new Error(error.message);
@@ -378,19 +395,23 @@ export async function updateBarcode(barcodeId: string, patch: { active?: boolean
   if (error) throw new Error(error.message);
 }
 
-export async function listScanEvents(search = "", result = "ALL", limit = 1000): Promise<ScanEvent[]> {
-  if (isDemoMode()) return demoListScanEvents(search, result, limit);
+export async function listScanEvents(search = "", result = "ALL", limit = 1000, options: LogQueryOptions = {}): Promise<ScanEvent[]> {
+  if (isDemoMode()) return demoListScanEvents(search, result, limit, options);
   let query = client().from("scan_event_view").select("*").order("created_at", { ascending: false }).limit(limit);
   if (result !== "ALL") query = query.eq("result", result);
+  if (options.startAt) query = query.gte("created_at", options.startAt);
+  if (options.endBefore) query = query.lt("created_at", options.endBefore);
   if (search.trim()) query = query.ilike("search_text", `%${search.trim()}%`);
   const { data, error } = await query;
   if (error) throw new Error(error.message);
   return (data ?? []).map((row) => ({ id: row.id, rawValue: row.raw_value, normalizedValue: row.normalized_value, expectedTargetType: row.expected_target_type ?? undefined, resolvedTargetType: row.resolved_target_type ?? undefined, targetLabel: row.target_label ?? undefined, result: row.result, context: row.context ?? undefined, actorId: row.actor_id ?? undefined, actorLabel: row.actor_label ?? undefined, createdAt: row.created_at }));
 }
 
-export async function listAuditLogs(search = "", limit = 1000): Promise<AuditLog[]> {
-  if (isDemoMode()) return demoListAuditLogs(search, limit);
+export async function listAuditLogs(search = "", limit = 1000, options: LogQueryOptions = {}): Promise<AuditLog[]> {
+  if (isDemoMode()) return demoListAuditLogs(search, limit, options);
   let query = client().from("audit_log_view").select("*").order("created_at", { ascending: false }).limit(limit);
+  if (options.startAt) query = query.gte("created_at", options.startAt);
+  if (options.endBefore) query = query.lt("created_at", options.endBefore);
   if (search.trim()) query = query.ilike("search_text", `%${search.trim()}%`);
   const { data, error } = await query;
   if (error) throw new Error(error.message);
