@@ -3,15 +3,26 @@
 import { useCallback, useEffect, useState } from "react";
 import { Feedback, type FeedbackKind } from "@/components/feedback";
 import { PermissionGuard } from "@/components/permission-guard";
-import { createLocation, listLocations, subscribeToInventory, updateLocation } from "@/lib/inventory-api";
+import {
+  createLocation,
+  listLocations,
+  subscribeToInventory,
+  updateLocation,
+} from "@/lib/inventory-api";
 import {
   containsHangul,
   isValidLocationBarcodeFormat,
   normalizeLocationBarcodeInput,
 } from "@/lib/location-barcode";
 import type { Location, LocationInput } from "@/types/domain";
+import { facilityLabel } from "@/lib/work-scope";
 
-const emptyForm: LocationInput = { locationCode: "", zone: "", barcodeValue: "" };
+const emptyForm: LocationInput = {
+  locationCode: "",
+  zone: "",
+  facility: "UNASSIGNED",
+  barcodeValue: "",
+};
 
 function normalizeStandardLocationOrKeep(value: string): string {
   const candidate = normalizeLocationBarcodeInput(value);
@@ -22,8 +33,10 @@ function normalizeStandardLocationOrKeep(value: string): string {
 
 function isDuplicateLocationCodeError(message: string): boolean {
   const normalized = message.toLowerCase();
-  return normalized.includes("locations_location_code_key")
-    || normalized.includes("duplicate key value");
+  return (
+    normalized.includes("locations_location_code_key") ||
+    normalized.includes("duplicate key value")
+  );
 }
 
 function LocationsContent() {
@@ -31,12 +44,20 @@ function LocationsContent() {
   const [search, setSearch] = useState("");
   const [form, setForm] = useState<LocationInput>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingOriginalCode, setEditingOriginalCode] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<{ kind: FeedbackKind; title: string; body?: string } | null>(null);
+  const [editingOriginalCode, setEditingOriginalCode] = useState<string | null>(
+    null,
+  );
+  const [feedback, setFeedback] = useState<{
+    kind: FeedbackKind;
+    title: string;
+    body?: string;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const locationSearch = containsHangul(search) ? normalizeStandardLocationOrKeep(search) : search;
+    const locationSearch = containsHangul(search)
+      ? normalizeStandardLocationOrKeep(search)
+      : search;
     setRows(await listLocations(locationSearch, true));
   }, [search]);
 
@@ -45,9 +66,16 @@ function LocationsContent() {
     return () => window.clearTimeout(timer);
   }, [load]);
 
-  useEffect(() => subscribeToInventory(load, { scope: "locations", fallbackMs: 120_000 }), [load]);
+  useEffect(
+    () =>
+      subscribeToInventory(load, { scope: "locations", fallbackMs: 120_000 }),
+    [load],
+  );
 
-  function commitLocationField(field: "locationCode" | "barcodeValue", rawValue: string) {
+  function commitLocationField(
+    field: "locationCode" | "barcodeValue",
+    rawValue: string,
+  ) {
     // React SyntheticEvent의 currentTarget을 상태 updater 안에서 늦게 참조하면
     // 일부 모바일 브라우저에서 null이 되어 화면 전체가 종료될 수 있습니다.
     const normalizedValue = normalizeStandardLocationOrKeep(rawValue);
@@ -64,7 +92,12 @@ function LocationsContent() {
     const originalCode = normalizeStandardLocationOrKeep(location.locationCode);
     setEditingId(location.id);
     setEditingOriginalCode(originalCode);
-    setForm({ locationCode: originalCode, zone: location.zone, barcodeValue: "" });
+    setForm({
+      locationCode: originalCode,
+      zone: location.zone,
+      facility: location.facility ?? "UNASSIGNED",
+      barcodeValue: "",
+    });
     setFeedback(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -87,24 +120,35 @@ function LocationsContent() {
         const originalCode = editingOriginalCode
           ? normalizeStandardLocationOrKeep(editingOriginalCode)
           : "";
-        const locationCodeChanged = normalizedForm.locationCode !== originalCode;
+        const locationCodeChanged =
+          normalizedForm.locationCode !== originalCode;
 
         if (locationCodeChanged) {
-          const possibleDuplicates = await listLocations(normalizedForm.locationCode, true);
-          const duplicate = possibleDuplicates.find((location) =>
-            location.id !== editingId
-            && normalizeStandardLocationOrKeep(location.locationCode) === normalizedForm.locationCode,
+          const possibleDuplicates = await listLocations(
+            normalizedForm.locationCode,
+            true,
+          );
+          const duplicate = possibleDuplicates.find(
+            (location) =>
+              location.id !== editingId &&
+              normalizeStandardLocationOrKeep(location.locationCode) ===
+                normalizedForm.locationCode,
           );
           if (duplicate) {
-            throw new Error(`이미 등록된 로케이션 코드입니다: ${normalizedForm.locationCode}`);
+            throw new Error(
+              `이미 등록된 로케이션 코드입니다: ${normalizedForm.locationCode}`,
+            );
           }
         }
 
         // 코드가 바뀌지 않았다면 p_new_location_code를 null로 보내 기존 코드의
         // UNIQUE 제약을 다시 건드리지 않고 구역/상태만 수정합니다.
         await updateLocation(editingId, {
-          ...(locationCodeChanged ? { locationCode: normalizedForm.locationCode } : {}),
+          ...(locationCodeChanged
+            ? { locationCode: normalizedForm.locationCode }
+            : {}),
           zone: normalizedForm.zone,
+          facility: normalizedForm.facility,
         });
         setFeedback({
           kind: "success",
@@ -140,7 +184,10 @@ function LocationsContent() {
       <section>
         <p className="eyebrow">LOCATION MASTER</p>
         <h2>로케이션 관리</h2>
-        <p className="muted">로케이션 코드 자체를 기본 바코드로 사용하거나 별도의 지정 번호를 연결할 수 있습니다.</p>
+        <p className="muted">
+          로케이션 코드 자체를 기본 바코드로 사용하거나 별도의 지정 번호를
+          연결할 수 있습니다.
+        </p>
       </section>
 
       <section className="panel">
@@ -161,12 +208,18 @@ function LocationsContent() {
             로케이션 코드 *
             <input
               value={form.locationCode}
-              onChange={(event) => setForm((current) => ({
-                ...current,
-                locationCode: event.target.value.toUpperCase(),
-              }))}
-              onCompositionEnd={(event) => commitLocationField("locationCode", event.currentTarget.value)}
-              onBlur={(event) => commitLocationField("locationCode", event.currentTarget.value)}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  locationCode: event.target.value.toUpperCase(),
+                }))
+              }
+              onCompositionEnd={(event) =>
+                commitLocationField("locationCode", event.currentTarget.value)
+              }
+              onBlur={(event) =>
+                commitLocationField("locationCode", event.currentTarget.value)
+              }
               placeholder="D1A-01-02-03"
             />
           </label>
@@ -175,12 +228,31 @@ function LocationsContent() {
             구역
             <input
               value={form.zone}
-              onChange={(event) => setForm((current) => ({
-                ...current,
-                zone: event.target.value.toUpperCase(),
-              }))}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  zone: event.target.value.toUpperCase(),
+                }))
+              }
               placeholder="D1A"
             />
+          </label>
+
+          <label>
+            소속 사업장 *
+            <select
+              value={form.facility}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  facility: event.target.value as LocationInput["facility"],
+                }))
+              }
+            >
+              <option value="UNASSIGNED">미지정</option>
+              <option value="DAEJA">대자동</option>
+              <option value="GWANSAN">관산동</option>
+            </select>
           </label>
 
           {!editingId ? (
@@ -188,12 +260,18 @@ function LocationsContent() {
               로케이션 바코드 번호
               <input
                 value={form.barcodeValue ?? ""}
-                onChange={(event) => setForm((current) => ({
-                  ...current,
-                  barcodeValue: event.target.value,
-                }))}
-                onCompositionEnd={(event) => commitLocationField("barcodeValue", event.currentTarget.value)}
-                onBlur={(event) => commitLocationField("barcodeValue", event.currentTarget.value)}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    barcodeValue: event.target.value,
+                  }))
+                }
+                onCompositionEnd={(event) =>
+                  commitLocationField("barcodeValue", event.currentTarget.value)
+                }
+                onBlur={(event) =>
+                  commitLocationField("barcodeValue", event.currentTarget.value)
+                }
                 placeholder="비워두면 로케이션 코드를 사용"
               />
             </label>
@@ -209,7 +287,11 @@ function LocationsContent() {
         </div>
       </section>
 
-      {feedback ? <Feedback kind={feedback.kind} title={feedback.title}>{feedback.body}</Feedback> : null}
+      {feedback ? (
+        <Feedback kind={feedback.kind} title={feedback.title}>
+          {feedback.body}
+        </Feedback>
+      ) : null}
 
       <section className="panel">
         <div className="section-heading">
@@ -219,10 +301,16 @@ function LocationsContent() {
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              onCompositionEnd={(event) => setSearch(normalizeStandardLocationOrKeep(event.currentTarget.value))}
+              onCompositionEnd={(event) =>
+                setSearch(
+                  normalizeStandardLocationOrKeep(event.currentTarget.value),
+                )
+              }
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.nativeEvent.isComposing) {
-                  setSearch(normalizeStandardLocationOrKeep(event.currentTarget.value));
+                  setSearch(
+                    normalizeStandardLocationOrKeep(event.currentTarget.value),
+                  );
                 }
               }}
             />
@@ -232,20 +320,50 @@ function LocationsContent() {
         <div className="table-wrap">
           <table>
             <thead>
-              <tr><th>상태</th><th>로케이션</th><th>구역</th><th>관리</th></tr>
+              <tr>
+                <th>상태</th>
+                <th>사업장</th>
+                <th>로케이션</th>
+                <th>구역</th>
+                <th>관리</th>
+              </tr>
             </thead>
             <tbody>
               {rows.map((location) => (
                 <tr key={location.id}>
-                  <td><span className={`status-badge ${location.active ? "active" : "inactive"}`}>{location.active ? "사용" : "중지"}</span></td>
-                  <td><strong>{location.locationCode}</strong></td>
+                  <td>
+                    <span
+                      className={`status-badge ${location.active ? "active" : "inactive"}`}
+                    >
+                      {location.active ? "사용" : "중지"}
+                    </span>
+                  </td>
+                  <td>
+                    <span
+                      className={`status-badge ${(location.facility ?? "UNASSIGNED") === "UNASSIGNED" ? "inactive" : "active"}`}
+                    >
+                      {facilityLabel[location.facility ?? "UNASSIGNED"]}
+                    </span>
+                  </td>
+                  <td>
+                    <strong>{location.locationCode}</strong>
+                  </td>
                   <td>{location.zone}</td>
                   <td>
                     <div className="row-actions">
-                      <button className="button button-secondary button-compact" onClick={() => startEdit(location)}>수정</button>
+                      <button
+                        className="button button-secondary button-compact"
+                        onClick={() => startEdit(location)}
+                      >
+                        수정
+                      </button>
                       <button
                         className="button button-ghost button-compact"
-                        onClick={() => void updateLocation(location.id, { active: !location.active }).then(load)}
+                        onClick={() =>
+                          void updateLocation(location.id, {
+                            active: !location.active,
+                          }).then(load)
+                        }
                       >
                         {location.active ? "비활성화" : "활성화"}
                       </button>
@@ -256,12 +374,18 @@ function LocationsContent() {
             </tbody>
           </table>
         </div>
-        {rows.length === 0 ? <p className="empty-state">등록된 로케이션이 없습니다.</p> : null}
+        {rows.length === 0 ? (
+          <p className="empty-state">등록된 로케이션이 없습니다.</p>
+        ) : null}
       </section>
     </div>
   );
 }
 
 export default function LocationsPage() {
-  return <PermissionGuard permission="manage_locations"><LocationsContent /></PermissionGuard>;
+  return (
+    <PermissionGuard permission="manage_locations">
+      <LocationsContent />
+    </PermissionGuard>
+  );
 }
