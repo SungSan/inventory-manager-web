@@ -343,27 +343,55 @@ export async function reverseTransaction(
 export async function listInventory(search = ""): Promise<InventoryRow[]> {
   if (isDemoMode()) return demoListInventory(search);
   const access = await getMyAccessConfig();
-  let query = client()
-    .from("inventory_stock_view")
-    .select("*")
-    .order("location_code");
-  if (access?.productScopes.length) query = query.in("product_category", access.productScopes);
-  if (search.trim()) {
-    const keyword = search.trim();
-    query = query.or(
-      [
-        `p_code_no.ilike.%${keyword}%`,
-        `code_no.ilike.%${keyword}%`,
-        `master_code_no.ilike.%${keyword}%`,
-        `artist.ilike.%${keyword}%`,
-        `name_ver.ilike.%${keyword}%`,
-        `location_code.ilike.%${keyword}%`,
-      ].join(","),
-    );
+  type InventoryStockViewRow = {
+    product_id: string;
+    location_id: string;
+    p_code_no: string | null;
+    code_no: string | null;
+    master_code_no: string | null;
+    artist: string | null;
+    name_ver: string | null;
+    product_category: string | null;
+    location_code: string;
+    zone: string | null;
+    facility: string | null;
+    qty: number | string;
+    updated_at: string;
+  };
+  const rows: InventoryStockViewRow[] = [];
+  const pageSize = 1000;
+  const keyword = search.trim();
+  let offset = 0;
+
+  while (true) {
+    let query = client()
+      .from("inventory_stock_view")
+      .select("*")
+      .order("location_code")
+      .order("product_id")
+      .range(offset, offset + pageSize - 1);
+    if (access?.productScopes.length) query = query.in("product_category", access.productScopes);
+    if (keyword) {
+      query = query.or(
+        [
+          `p_code_no.ilike.%${keyword}%`,
+          `code_no.ilike.%${keyword}%`,
+          `master_code_no.ilike.%${keyword}%`,
+          `artist.ilike.%${keyword}%`,
+          `name_ver.ilike.%${keyword}%`,
+          `location_code.ilike.%${keyword}%`,
+        ].join(","),
+      );
+    }
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    const page = (data ?? []) as InventoryStockViewRow[];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+    offset += pageSize;
   }
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
-  return (data ?? []).map((row) => ({
+
+  return rows.map((row) => ({
     productId: row.product_id,
     locationId: row.location_id,
     pCodeNo: row.p_code_no ?? "",
@@ -382,6 +410,8 @@ export async function listInventory(search = ""): Promise<InventoryRow[]> {
     updatedAt: row.updated_at,
   }));
 }
+
+function mapTransaction(row: Record<string, unknown>): InventoryTransaction {
 
 function mapTransaction(row: Record<string, unknown>): InventoryTransaction {
   return {
