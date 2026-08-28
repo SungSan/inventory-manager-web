@@ -4,6 +4,10 @@ export type BarcodeSource = "manufacturer" | "internal" | "custom" | "future";
 export type UserRole = "admin" | "manager" | "operator" | "viewer";
 export type TransactionStatus = "ACTIVE" | "REVERSED" | "REVERSAL";
 export type ScanResult = "SUCCESS" | "NOT_FOUND" | "WRONG_TYPE" | "ERROR";
+export type ProductCategory = "ALBUM" | "MD";
+export type Facility = "DAEJA" | "GWANSAN" | "UNASSIGNED";
+export type MenuAccessLevel = "HIDDEN" | "VIEW" | "USE";
+export type ProductScope = "ALBUM" | "MD";
 
 export interface Product {
   id: string;
@@ -13,6 +17,7 @@ export interface Product {
   masterCodeNo: string;
   artist: string;
   nameVer: string;
+  productCategory?: ProductCategory;
   active: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -23,6 +28,7 @@ export interface Location {
   scanTargetId: string;
   locationCode: string;
   zone: string;
+  facility?: Facility;
   active: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -62,8 +68,10 @@ export interface InventoryRow {
   masterCodeNo: string;
   artist: string;
   nameVer: string;
+  productCategory?: ProductCategory;
   locationCode: string;
   zone: string;
+  facility?: Facility;
   qty: number;
   updatedAt: string;
 }
@@ -137,6 +145,7 @@ export interface ProductInput {
   masterCodeNo: string;
   artist: string;
   nameVer: string;
+  productCategory: ProductCategory;
   primaryBarcode: string;
   barcodeSource?: BarcodeSource;
 }
@@ -144,6 +153,7 @@ export interface ProductInput {
 export interface LocationInput {
   locationCode: string;
   zone: string;
+  facility: Facility;
   barcodeValue?: string;
 }
 
@@ -181,6 +191,8 @@ export interface UserProfile {
   displayName: string;
   role: UserRole;
   active: boolean;
+  menuAccess?: Record<string, MenuAccessLevel>;
+  productScopes?: ProductScope[];
 }
 
 export interface ImportInventoryRow {
