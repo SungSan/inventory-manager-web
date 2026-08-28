@@ -412,8 +412,6 @@ export async function listInventory(search = ""): Promise<InventoryRow[]> {
 }
 
 function mapTransaction(row: Record<string, unknown>): InventoryTransaction {
-
-function mapTransaction(row: Record<string, unknown>): InventoryTransaction {
   return {
     id: String(row.id),
     operation: row.operation as "IB" | "OB",
