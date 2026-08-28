@@ -359,7 +359,7 @@ export async function listInventory(search = ""): Promise<InventoryRow[]> {
     updated_at: string;
   };
   const rows: InventoryStockViewRow[] = [];
-  const pageSize = 1000;
+  const inventoryPageSize = 1000;
   const keyword = search.trim();
   let offset = 0;
 
