@@ -1,11 +1,116 @@
-import { listInventory, listLocations, listProducts } from "@/lib/inventory-api";
+import {
+  listInventory,
+  listLocations,
+  listProducts,
+} from "@/lib/inventory-api";
 import { getSupabaseClient, isDemoMode } from "@/lib/supabase";
+import { inferFacility } from "@/lib/work-scope";
+import type { Facility } from "@/types/domain";
 
 export interface DashboardMetrics {
   totalQty: number;
   skuCount: number;
   locationCount: number;
   lowStock: number;
+}
+
+export type FacilityDashboardMetrics = Record<Facility, DashboardMetrics>;
+export interface FacilityFlowSummary {
+  inboundQty: number;
+  outboundQty: number;
+  inboundCount: number;
+  outboundCount: number;
+}
+export type FacilityFlowSummaries = Record<Facility, FacilityFlowSummary>;
+
+const emptyFacilityMetrics = (): FacilityDashboardMetrics => ({
+  DAEJA: { totalQty: 0, skuCount: 0, locationCount: 0, lowStock: 0 },
+  GWANSAN: { totalQty: 0, skuCount: 0, locationCount: 0, lowStock: 0 },
+  UNASSIGNED: { totalQty: 0, skuCount: 0, locationCount: 0, lowStock: 0 },
+});
+
+export async function getFacilityDashboardMetrics(): Promise<FacilityDashboardMetrics> {
+  const [inventory, locations] = await Promise.all([
+    listInventory(),
+    listLocations("", false),
+  ]);
+  const result = emptyFacilityMetrics();
+  const skuSets: Record<Facility, Set<string>> = {
+    DAEJA: new Set(),
+    GWANSAN: new Set(),
+    UNASSIGNED: new Set(),
+  };
+  for (const location of locations)
+    result[
+      location.facility ?? inferFacility(location.locationCode)
+    ].locationCount += 1;
+  for (const row of inventory) {
+    const facility = row.facility ?? inferFacility(row.locationCode);
+    const target = result[facility];
+    target.totalQty += row.qty;
+    if (row.qty <= 5) target.lowStock += 1;
+    skuSets[facility].add(row.productId);
+  }
+  for (const facility of ["DAEJA", "GWANSAN", "UNASSIGNED"] as Facility[])
+    result[facility].skuCount = skuSets[facility].size;
+  return result;
+}
+
+export async function getFacilityFlowSummaries(
+  startDate: string,
+  endDate: string,
+): Promise<FacilityFlowSummaries> {
+  const result: FacilityFlowSummaries = {
+    DAEJA: { inboundQty: 0, outboundQty: 0, inboundCount: 0, outboundCount: 0 },
+    GWANSAN: {
+      inboundQty: 0,
+      outboundQty: 0,
+      inboundCount: 0,
+      outboundCount: 0,
+    },
+    UNASSIGNED: {
+      inboundQty: 0,
+      outboundQty: 0,
+      inboundCount: 0,
+      outboundCount: 0,
+    },
+  };
+  if (isDemoMode()) return result;
+  const supabase = getSupabaseClient();
+  if (!supabase) return result;
+  const nextDay = new Date(`${endDate}T00:00:00+09:00`);
+  nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+  const { data, error } = await supabase
+    .from("inventory_transaction_view")
+    .select(
+      "operation,qty,location_code,created_at,status,reference_type,reversal_of",
+    )
+    .gte("created_at", new Date(`${startDate}T00:00:00+09:00`).toISOString())
+    .lt("created_at", nextDay.toISOString())
+    .neq("status", "REVERSED")
+    .neq("reference_type", "TRANSFER")
+    .limit(10000);
+  if (error) throw new Error(error.message);
+  for (const row of data ?? []) {
+    const hour = Number(
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Seoul",
+        hour: "2-digit",
+        hour12: false,
+      }).format(new Date(row.created_at)),
+    );
+    if (hour < 7) continue;
+    const facility = inferFacility(row.location_code ?? "");
+    if (row.operation === "IB") {
+      result[facility].inboundQty += Number(row.qty);
+      result[facility].inboundCount += 1;
+    }
+    if (row.operation === "OB") {
+      result[facility].outboundQty += Number(row.qty);
+      result[facility].outboundCount += 1;
+    }
+  }
+  return result;
 }
 
 export type DashboardFlowPeriod = "DAY" | "WEEK" | "MONTH" | "YEAR";
@@ -37,7 +142,9 @@ const PAGE_SIZE = 1000;
 const FLOW_AGGREGATION_MODE = "REAL_FLOW_EXCLUDE_TRANSFER_0700";
 
 function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function asArray(value: unknown): unknown[] {
@@ -51,7 +158,9 @@ function kstToday(): string {
     month: "2-digit",
     day: "2-digit",
   }).formatToParts(new Date());
-  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const value = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
   return `${value.year}-${value.month}-${value.day}`;
 }
 
@@ -74,12 +183,20 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
   if (!supabase) throw new Error("Supabase 연결 설정을 확인하세요.");
 
   const [productCountResult, locationCountResult] = await Promise.all([
-    supabase.from("products").select("id", { count: "exact", head: true }).eq("active", true),
-    supabase.from("locations").select("id", { count: "exact", head: true }).eq("active", true),
+    supabase
+      .from("products")
+      .select("id", { count: "exact", head: true })
+      .eq("active", true),
+    supabase
+      .from("locations")
+      .select("id", { count: "exact", head: true })
+      .eq("active", true),
   ]);
 
-  if (productCountResult.error) throw new Error(productCountResult.error.message);
-  if (locationCountResult.error) throw new Error(locationCountResult.error.message);
+  if (productCountResult.error)
+    throw new Error(productCountResult.error.message);
+  if (locationCountResult.error)
+    throw new Error(locationCountResult.error.message);
 
   let totalQty = 0;
   let lowStock = 0;
@@ -144,15 +261,23 @@ export async function getDashboardFlowStats(
 
   if (error) {
     const message = error.message || "";
-    if (message.includes("get_dashboard_flow_stats") || message.includes("schema cache") || message.includes("Could not find")) {
-      throw new Error("실시간 입출고 현황 DB 기능이 아직 적용되지 않았습니다. SQL 42를 실행하세요.");
+    if (
+      message.includes("get_dashboard_flow_stats") ||
+      message.includes("schema cache") ||
+      message.includes("Could not find")
+    ) {
+      throw new Error(
+        "실시간 입출고 현황 DB 기능이 아직 적용되지 않았습니다. SQL 42를 실행하세요.",
+      );
     }
     throw new Error(message);
   }
 
   const row = asRecord(data);
   if (String(row.aggregation_mode ?? "") !== FLOW_AGGREGATION_MODE) {
-    throw new Error("실시간 입출고 현황 집계 기준이 구버전입니다. SQL 42를 실행하세요.");
+    throw new Error(
+      "실시간 입출고 현황 집계 기준이 구버전입니다. SQL 42를 실행하세요.",
+    );
   }
 
   return {
