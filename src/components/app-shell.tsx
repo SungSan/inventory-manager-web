@@ -30,6 +30,7 @@ const ACTIVITY_TRACK_THROTTLE_MS = 30 * 1000;
 const nav: NavItem[] = [
   { href: "/", label: "대시보드", permission: "view_dashboard" },
   { href: "/scan", label: "입고·출고", permission: "scan_inventory" },
+  { href: "/outbound-progress", label: "출고 진행", permission: "scan_inventory" },
   { href: "/inventory", label: "재고조회", permission: "view_inventory" },
   { href: "/transfers", label: "재고이관", permission: "transfer_inventory" },
   { href: "/external-transfers", label: "외부이관", permission: "external_transfer" },
