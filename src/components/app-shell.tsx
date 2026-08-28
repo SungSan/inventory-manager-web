@@ -423,7 +423,10 @@ function ShellContent({ children }: { children: React.ReactNode }) {
             <WorkRequestIndicator />
           </div>
         </header>
-        <main className={styles.content}>{children}</main>
+        <main className={styles.content}>
+          {children}
+          <div className={styles.bottomNavClearance} aria-hidden="true" />
+        </main>
       </div>
 
       <nav
