@@ -72,6 +72,11 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   scrollbar-gutter: stable;
 }
 .table-wrap thead { position: sticky; top: 0; z-index: 2; background: var(--surface); }
+
+@media (max-width: 720px) {
+  /* Let the page own vertical scrolling so fixed mobile navigation cannot cover the last row. */
+  .table-wrap { max-height: none; }
+}
 table { width: 100%; border-collapse: collapse; white-space: nowrap; }
 th, td { padding: 13px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: middle; }
 th { color: var(--muted); font-size: 12px; letter-spacing: .04em; }
