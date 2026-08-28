@@ -122,9 +122,9 @@ create table if not exists public.user_product_scopes (
 alter table public.user_menu_access enable row level security;
 alter table public.user_product_scopes enable row level security;
 drop policy if exists user_menu_access_own_read on public.user_menu_access;
-create policy user_menu_access_own_read on public.user_menu_access for select to authenticated using (user_id=auth.uid() or public.current_user_role()='admin');
+create policy user_menu_access_own_read on public.user_menu_access for select to authenticated using (user_id=auth.uid() or public.current_role()='admin');
 drop policy if exists user_product_scopes_own_read on public.user_product_scopes;
-create policy user_product_scopes_own_read on public.user_product_scopes for select to authenticated using (user_id=auth.uid() or public.current_user_role()='admin');
+create policy user_product_scopes_own_read on public.user_product_scopes for select to authenticated using (user_id=auth.uid() or public.current_role()='admin');
 
 insert into public.user_product_scopes(user_id,product_scope)
 select id,'ALBUM' from public.profiles on conflict do nothing;
