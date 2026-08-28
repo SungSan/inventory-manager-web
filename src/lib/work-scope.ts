@@ -15,7 +15,7 @@ export const facilityLabel: Record<Facility, string> = {
 
 export function inferFacility(locationCode: string): Facility {
   const code = locationCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
-  if (code.startsWith("D1")) return "DAEJA";
+  if (code.startsWith("D")) return "DAEJA";
   if (code.startsWith("K1") || code.startsWith("KN")) return "GWANSAN";
   return "UNASSIGNED";
 }
