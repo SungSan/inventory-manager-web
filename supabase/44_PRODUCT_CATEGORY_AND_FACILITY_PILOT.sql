@@ -85,13 +85,15 @@ begin
 end; $$;
 
 create or replace view public.inventory_stock_view with (security_invoker=true) as
-select ib.product_id,ib.location_id,p.p_code_no,p.code_no,p.master_code_no,p.artist,p.name_ver,p.product_category,l.location_code,l.zone,l.facility,ib.qty,ib.updated_at
+select ib.product_id,ib.location_id,p.p_code_no,p.code_no,p.master_code_no,p.artist,p.name_ver,l.location_code,l.zone,ib.qty,ib.updated_at,
+  p.product_category,l.facility
 from public.inventory_balances ib join public.products p on p.id=ib.product_id join public.locations l on l.id=ib.location_id;
 
 create or replace view public.inventory_transaction_view with (security_invoker=true) as
-select t.*,concat_ws(' ',p.artist,p.name_ver) product_label,p.product_category,l.location_code,l.facility,pr.display_name actor_label,
-  upper(concat_ws(' ',p.artist,p.name_ver,p.product_category,l.location_code,l.facility,t.product_barcode_value,t.location_barcode_value,pr.display_name,t.note)) search_text
-from public.inventory_transactions t join public.products p on p.id=t.product_id join public.locations l on l.id=t.location_id left join public.profiles pr on pr.id=t.actor_id;
+select t.*,concat_ws(' ',p.artist,p.name_ver) product_label,l.location_code,public.user_label(t.actor_id) actor_label,
+  upper(concat_ws(' ',p.artist,p.name_ver,p.product_category,l.location_code,l.facility,t.product_barcode_value,t.location_barcode_value,public.user_label(t.actor_id),t.note)) search_text,
+  p.product_category,l.facility
+from public.inventory_transactions t join public.products p on p.id=t.product_id join public.locations l on l.id=t.location_id;
 
 revoke all on function public.create_product_with_target_v2(text,text,text,text,text,text,text,text,text) from public,anon;
 revoke all on function public.update_product_v2(uuid,text,text,text,text,text,text,boolean) from public,anon;
