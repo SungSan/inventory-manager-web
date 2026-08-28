@@ -132,9 +132,11 @@ async function tuneCamera(video: HTMLVideoElement, forceRefocus = false): Promis
 export function CameraScanner({
   onDetected,
   onClose,
+  continuousLayout = false,
 }: {
   onDetected: (value: string) => void | boolean | Promise<void | boolean>;
   onClose: () => void;
+  continuousLayout?: boolean;
 }) {
   const { user } = useUser();
   const userId = user?.id ?? "anonymous";
@@ -142,6 +144,8 @@ export function CameraScanner({
   const controlsRef = useRef<{ stop: () => void } | null>(null);
   const onDetectedRef = useRef(onDetected);
   const completedRef = useRef(false);
+  const blockedValueRef = useRef("");
+  const absenceTimerRef = useRef<number | null>(null);
   const [error, setError] = useState("");
   const [detected, setDetected] = useState(false);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
@@ -192,11 +196,26 @@ export function CameraScanner({
         const preferred = requested ?? remembered ?? choosePreferredCamera(videoDevices);
 
         const callback = (result: { getText: () => string } | undefined) => {
-          if (!active || !result || completedRef.current) return;
+          if (!active) return;
+          if (!result) {
+            if (blockedValueRef.current && absenceTimerRef.current === null) {
+              absenceTimerRef.current = window.setTimeout(() => {
+                blockedValueRef.current = "";
+                absenceTimerRef.current = null;
+              }, 450);
+            }
+            return;
+          }
           const value = result.getText().trim();
-          if (!value) return;
+          if (absenceTimerRef.current !== null) {
+            window.clearTimeout(absenceTimerRef.current);
+            absenceTimerRef.current = null;
+          }
+          if (!value || completedRef.current || value === blockedValueRef.current)
+            return;
 
           completedRef.current = true;
+          blockedValueRef.current = value;
           setDetected(true);
           window.setTimeout(async () => {
             if (!active) return;
@@ -206,7 +225,7 @@ export function CameraScanner({
               if (!active) return;
               setDetected(false);
               completedRef.current = false;
-            }, 180);
+            }, 850);
           }, 140);
         };
 
@@ -268,6 +287,8 @@ export function CameraScanner({
 
     return () => {
       active = false;
+      if (absenceTimerRef.current !== null)
+        window.clearTimeout(absenceTimerRef.current);
       controlsRef.current?.stop();
       controlsRef.current = null;
     };
@@ -297,7 +318,9 @@ export function CameraScanner({
   }
 
   return (
-    <div className="modal-backdrop">
+    <div
+      className={`modal-backdrop ${continuousLayout ? "camera-backdrop-continuous" : ""}`}
+    >
       <section className="camera-modal" aria-modal="true" role="dialog">
         <div className="section-heading camera-heading">
           <div>

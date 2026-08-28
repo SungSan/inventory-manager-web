@@ -75,6 +75,34 @@
   background: rgba(3, 7, 18, 0.7);
   padding: 20px;
 }
+.cameraFocusBackdrop {
+  inset: 50% 0 0;
+  z-index: 101;
+  padding: 8px;
+  background: transparent;
+  pointer-events: none;
+}
+.cameraFocusBackdrop .focusCard {
+  width: min(760px, 100%);
+  max-height: calc(50vh - 12px);
+  overflow: auto;
+  padding: 14px;
+  border: 2px solid #2563eb;
+  border-radius: 16px;
+  pointer-events: auto;
+}
+.cameraFocusBackdrop .focusCard h2 {
+  margin: 4px 0;
+  font-size: clamp(1rem, 4vw, 1.5rem);
+}
+.cameraFocusBackdrop .focusCount {
+  font-size: clamp(2.8rem, 12vw, 5rem);
+}
+.cameraFocusBackdrop .focusMeta,
+.cameraFocusBackdrop .manualBox,
+.cameraFocusBackdrop .focusCard > button {
+  display: none;
+}
 .focusCard {
   width: min(760px, 100%);
   padding: 34px;

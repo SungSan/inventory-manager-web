@@ -143,6 +143,14 @@ input[type="checkbox"] { width: 18px; min-height: 18px; padding: 0; }
 .modal-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 18px; background: rgba(15,23,42,.72); }
 .camera-modal { width: min(760px, 100%); padding: 20px; background: #fff; border-radius: 18px; }
 .camera-video { width: 100%; max-height: 62vh; object-fit: cover; border-radius: 12px; background: #111; }
+.camera-backdrop-continuous { place-items: start center; padding: 8px; }
+.camera-backdrop-continuous .camera-modal { max-height: 50vh; overflow: auto; padding: 10px; }
+.camera-backdrop-continuous .camera-heading { margin-bottom: 6px; }
+.camera-backdrop-continuous .camera-heading h2 { margin: 2px 0; font-size: 1rem; }
+.camera-backdrop-continuous .camera-video { max-height: 31vh; }
+.camera-backdrop-continuous .action-row,
+.camera-backdrop-continuous .camera-device-note,
+.camera-backdrop-continuous .camera-help { display: none; }
 .login-page, .center-panel { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
 .login-card { width: min(430px, 100%); display: grid; gap: 16px; padding: 28px; background: #fff; border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); }
 
