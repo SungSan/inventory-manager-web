@@ -386,7 +386,7 @@
   .workspaceTitle h1 { font-size: 17px; }
   .workspaceActions { margin-left: auto; }
   .presenceSummary { min-height: 36px; padding: 7px 9px; }
-  .content { padding: 18px 14px 88px; }
+  .content { padding: 18px 14px calc(124px + env(safe-area-inset-bottom)); }
 
   .bottomNav {
     position: fixed;
