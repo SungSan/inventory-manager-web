@@ -9,9 +9,15 @@ alter table public.products add constraint products_product_category_check check
 alter table public.locations drop constraint if exists locations_facility_check;
 alter table public.locations add constraint locations_facility_check check (facility in ('DAEJA','GWANSAN','UNASSIGNED'));
 
+commit;
+begin;
+
 -- 명확한 기존 코드만 초기 분류한다. 나머지는 로케이션 관리에서 직접 지정한다.
 update public.locations set facility='DAEJA' where facility='UNASSIGNED' and regexp_replace(upper(location_code),'[^A-Z0-9]','','g') like 'D1%';
 update public.locations set facility='GWANSAN' where facility='UNASSIGNED' and (regexp_replace(upper(location_code),'[^A-Z0-9]','','g') like 'K1%' or regexp_replace(upper(location_code),'[^A-Z0-9]','','g') like 'KN%');
+
+commit;
+begin;
 
 create or replace function public.create_product_with_target_v2(
   p_p_code_no text,p_code_no text,p_master_code_no text,p_artist text,p_name_ver text,p_primary_barcode text,
