@@ -133,7 +133,7 @@ export function CameraScanner({
   onDetected,
   onClose,
 }: {
-  onDetected: (value: string) => void;
+  onDetected: (value: string) => void | boolean | Promise<void | boolean>;
   onClose: () => void;
 }) {
   const { user } = useUser();
@@ -198,8 +198,15 @@ export function CameraScanner({
 
           completedRef.current = true;
           setDetected(true);
-          window.setTimeout(() => {
-            if (active) onDetectedRef.current(value);
+          window.setTimeout(async () => {
+            if (!active) return;
+            const keepScanning = await onDetectedRef.current(value);
+            if (!active || keepScanning !== true) return;
+            window.setTimeout(() => {
+              if (!active) return;
+              setDetected(false);
+              completedRef.current = false;
+            }, 180);
           }, 140);
         };
 
