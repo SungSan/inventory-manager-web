@@ -787,8 +787,20 @@ function OutboundProgressContent() {
             refocus();
           }}
           onDetected={(value) => {
-            setCameraOpen(false);
+            if (!activeShipment) {
+              processScan(value);
+              return true;
+            }
+            const barcode = normalizeBarcode(value);
+            const item = activeShipment.items.find(
+              (candidate) =>
+                normalizeBarcode(candidate.productBarcode) === barcode,
+            );
             processScan(value);
+            if (!item || item.pickedQty >= item.requiredQty) return true;
+            const itemCompleted = item.pickedQty + 1 >= item.requiredQty;
+            if (itemCompleted) setCameraOpen(false);
+            return !itemCompleted;
           }}
         />
       ) : null}
