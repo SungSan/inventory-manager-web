@@ -1,6 +1,8 @@
 import { getSupabaseClient, isDemoMode } from "@/lib/supabase";
 import { listInventory } from "@/lib/inventory-api";
-import type { InventoryRow } from "@/types/domain";
+import type { InventoryRow, ProductCategory } from "@/types/domain";
+import { getMyAccessConfig } from "@/lib/access-control-api";
+import { inferFacility } from "@/lib/work-scope";
 
 const PAGE_SIZE = 1000;
 let inventoryLoadInFlight: Promise<InventoryRow[]> | null = null;
@@ -12,15 +14,18 @@ async function loadAllInventoryRows(): Promise<InventoryRow[]> {
   if (!supabase) throw new Error("Supabase 연결 설정을 확인하세요.");
 
   const result: InventoryRow[] = [];
+  const access = await getMyAccessConfig();
   let offset = 0;
 
   while (true) {
-    const { data, error } = await supabase
+    let query = supabase
       .from("inventory_stock_view")
       .select("*")
       .order("location_code")
       .order("product_id")
       .range(offset, offset + PAGE_SIZE - 1);
+    if (access?.productScopes.length) query = query.in("product_category", access.productScopes);
+    const { data, error } = await query;
 
     if (error) throw new Error(error.message);
 
@@ -33,8 +38,10 @@ async function loadAllInventoryRows(): Promise<InventoryRow[]> {
       masterCodeNo: row.master_code_no ?? "",
       artist: row.artist ?? "",
       nameVer: row.name_ver ?? "",
+      productCategory: (row.product_category === "MD" ? "MD" : "ALBUM") as ProductCategory,
       locationCode: row.location_code,
       zone: row.zone ?? "",
+      facility: row.facility === "DAEJA" || row.facility === "GWANSAN" ? row.facility : inferFacility(row.location_code),
       qty: Number(row.qty),
       updatedAt: row.updated_at,
     })));

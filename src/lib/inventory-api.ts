@@ -48,6 +48,8 @@ import type {
   UserProfile,
   UserRole,
 } from "@/types/domain";
+import { inferFacility } from "@/lib/work-scope";
+import { getMyAccessConfig } from "@/lib/access-control-api";
 
 function client() {
   const supabase = getSupabaseClient();
@@ -67,52 +69,109 @@ function asRecord(value: unknown): Record<string, unknown> {
   if (typeof value === "string") {
     try {
       const parsed = JSON.parse(value) as unknown;
-      return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {};
+      return parsed && typeof parsed === "object"
+        ? (parsed as Record<string, unknown>)
+        : {};
     } catch {
       return {};
     }
   }
-  return typeof value === "object" ? value as Record<string, unknown> : {};
+  return typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
 
 function mapProduct(row: Record<string, unknown>): Product {
   return {
     id: String(firstValue(row, "id", "product_id", "productId") ?? ""),
-    scanTargetId: String(firstValue(row, "scan_target_id", "scanTargetId") ?? ""),
+    scanTargetId: String(
+      firstValue(row, "scan_target_id", "scanTargetId") ?? "",
+    ),
     pCodeNo: String(firstValue(row, "p_code_no", "pCodeNo") ?? ""),
     codeNo: String(firstValue(row, "code_no", "codeNo") ?? ""),
-    masterCodeNo: String(firstValue(row, "master_code_no", "masterCodeNo") ?? ""),
+    masterCodeNo: String(
+      firstValue(row, "master_code_no", "masterCodeNo") ?? "",
+    ),
     artist: String(firstValue(row, "artist") ?? ""),
     nameVer: String(firstValue(row, "name_ver", "nameVer") ?? ""),
-    active: firstValue(row, "active") === undefined ? true : Boolean(firstValue(row, "active")),
-    createdAt: firstValue(row, "created_at", "createdAt") ? String(firstValue(row, "created_at", "createdAt")) : undefined,
-    updatedAt: firstValue(row, "updated_at", "updatedAt") ? String(firstValue(row, "updated_at", "updatedAt")) : undefined,
+    productCategory:
+      String(
+        firstValue(row, "product_category", "productCategory") ?? "ALBUM",
+      ) === "MD"
+        ? "MD"
+        : "ALBUM",
+    active:
+      firstValue(row, "active") === undefined
+        ? true
+        : Boolean(firstValue(row, "active")),
+    createdAt: firstValue(row, "created_at", "createdAt")
+      ? String(firstValue(row, "created_at", "createdAt"))
+      : undefined,
+    updatedAt: firstValue(row, "updated_at", "updatedAt")
+      ? String(firstValue(row, "updated_at", "updatedAt"))
+      : undefined,
   };
 }
 
 function mapLocation(row: Record<string, unknown>): Location {
+  const locationCode = String(
+    firstValue(row, "location_code", "locationCode") ?? "",
+  );
+  const storedFacility = String(firstValue(row, "facility") ?? "");
   return {
     id: String(firstValue(row, "id", "location_id", "locationId") ?? ""),
-    scanTargetId: String(firstValue(row, "scan_target_id", "scanTargetId") ?? ""),
-    locationCode: String(firstValue(row, "location_code", "locationCode") ?? ""),
+    scanTargetId: String(
+      firstValue(row, "scan_target_id", "scanTargetId") ?? "",
+    ),
+    locationCode,
     zone: String(firstValue(row, "zone") ?? ""),
-    active: firstValue(row, "active") === undefined ? true : Boolean(firstValue(row, "active")),
-    createdAt: firstValue(row, "created_at", "createdAt") ? String(firstValue(row, "created_at", "createdAt")) : undefined,
-    updatedAt: firstValue(row, "updated_at", "updatedAt") ? String(firstValue(row, "updated_at", "updatedAt")) : undefined,
+    facility:
+      storedFacility === "DAEJA" || storedFacility === "GWANSAN"
+        ? storedFacility
+        : inferFacility(locationCode),
+    active:
+      firstValue(row, "active") === undefined
+        ? true
+        : Boolean(firstValue(row, "active")),
+    createdAt: firstValue(row, "created_at", "createdAt")
+      ? String(firstValue(row, "created_at", "createdAt"))
+      : undefined,
+    updatedAt: firstValue(row, "updated_at", "updatedAt")
+      ? String(firstValue(row, "updated_at", "updatedAt"))
+      : undefined,
   };
 }
 
 function mapResolvedBarcode(row: Record<string, unknown>): ResolvedBarcode {
-  const targetType = String(firstValue(row, "target_type", "targetType") ?? "").toLowerCase();
+  const targetType = String(
+    firstValue(row, "target_type", "targetType") ?? "",
+  ).toLowerCase();
   const targetData = asRecord(firstValue(row, "target_data", "targetData"));
-  const scanTargetId = String(firstValue(row, "scan_target_id", "scanTargetId", "scan_target") ?? firstValue(targetData, "scan_target_id", "scanTargetId") ?? "");
-  const targetId = String(firstValue(row, "target_id", "targetId") ?? firstValue(targetData, "id") ?? "");
-  const barcodeId = String(firstValue(row, "barcode_id", "barcodeId", "id") ?? "");
-  const barcodeValue = String(firstValue(row, "barcode_value", "barcodeValue") ?? "");
+  const scanTargetId = String(
+    firstValue(row, "scan_target_id", "scanTargetId", "scan_target") ??
+      firstValue(targetData, "scan_target_id", "scanTargetId") ??
+      "",
+  );
+  const targetId = String(
+    firstValue(row, "target_id", "targetId") ??
+      firstValue(targetData, "id") ??
+      "",
+  );
+  const barcodeId = String(
+    firstValue(row, "barcode_id", "barcodeId", "id") ?? "",
+  );
+  const barcodeValue = String(
+    firstValue(row, "barcode_value", "barcodeValue") ?? "",
+  );
 
   if (targetType === "product") {
-    const product = mapProduct({ ...targetData, id: targetId || firstValue(targetData, "id"), scan_target_id: scanTargetId });
-    if (!product.id) throw new Error("상품 바코드 응답에 상품 ID가 없습니다. Supabase 스키마를 업데이트하세요.");
+    const product = mapProduct({
+      ...targetData,
+      id: targetId || firstValue(targetData, "id"),
+      scan_target_id: scanTargetId,
+    });
+    if (!product.id)
+      throw new Error(
+        "상품 바코드 응답에 상품 ID가 없습니다. Supabase 스키마를 업데이트하세요.",
+      );
     return {
       barcodeId,
       barcodeValue,
@@ -122,8 +181,15 @@ function mapResolvedBarcode(row: Record<string, unknown>): ResolvedBarcode {
     };
   }
   if (targetType === "location") {
-    const location = mapLocation({ ...targetData, id: targetId || firstValue(targetData, "id"), scan_target_id: scanTargetId });
-    if (!location.id) throw new Error("로케이션 바코드 응답에 로케이션 ID가 없습니다. Supabase 스키마를 업데이트하세요.");
+    const location = mapLocation({
+      ...targetData,
+      id: targetId || firstValue(targetData, "id"),
+      scan_target_id: scanTargetId,
+    });
+    if (!location.id)
+      throw new Error(
+        "로케이션 바코드 응답에 로케이션 ID가 없습니다. Supabase 스키마를 업데이트하세요.",
+      );
     return {
       barcodeId,
       barcodeValue,
@@ -137,7 +203,11 @@ function mapResolvedBarcode(row: Record<string, unknown>): ResolvedBarcode {
     barcodeValue,
     targetType: targetType || "unknown",
     targetId,
-    target: { type: targetType || "unknown", label: String(firstValue(targetData, "label") ?? barcodeValue), data: targetData },
+    target: {
+      type: targetType || "unknown",
+      label: String(firstValue(targetData, "label") ?? barcodeValue),
+      data: targetData,
+    },
   };
 }
 
@@ -146,9 +216,22 @@ export async function getCurrentUser(): Promise<UserProfile> {
   const supabase = client();
   const { data: authData, error: authError } = await supabase.auth.getUser();
   if (authError || !authData.user) throw new Error("로그인이 필요합니다.");
-  const { data, error } = await supabase.from("profiles").select("*").eq("id", authData.user.id).single();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", authData.user.id)
+    .single();
   if (error) throw new Error(error.message);
-  return { id: data.id, email: data.email ?? authData.user.email ?? "", displayName: data.display_name ?? data.email ?? "사용자", role: data.role, active: data.active };
+  const access = await getMyAccessConfig();
+  return {
+    id: data.id,
+    email: data.email ?? authData.user.email ?? "",
+    displayName: data.display_name ?? data.email ?? "사용자",
+    role: data.role,
+    active: data.active,
+    menuAccess: access?.menuAccess,
+    productScopes: access?.productScopes,
+  };
 }
 
 export async function setCurrentDemoUser(userId: string): Promise<void> {
@@ -158,14 +241,29 @@ export async function setCurrentDemoUser(userId: string): Promise<void> {
 
 export async function listUsers(): Promise<UserProfile[]> {
   if (isDemoMode()) return demoListUsers();
-  const { data, error } = await client().from("profiles").select("*").order("display_name");
+  const { data, error } = await client()
+    .from("profiles")
+    .select("*")
+    .order("display_name");
   if (error) throw new Error(error.message);
-  return (data ?? []).map((row) => ({ id: row.id, email: row.email ?? "", displayName: row.display_name ?? row.email ?? "사용자", role: row.role, active: row.active }));
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    email: row.email ?? "",
+    displayName: row.display_name ?? row.email ?? "사용자",
+    role: row.role,
+    active: row.active,
+  }));
 }
 
-export async function updateUserRole(userId: string, role: UserRole): Promise<void> {
+export async function updateUserRole(
+  userId: string,
+  role: UserRole,
+): Promise<void> {
   if (isDemoMode()) return demoUpdateUserRole(userId, role);
-  const { error } = await client().rpc("update_user_role", { p_user_id: userId, p_role: role });
+  const { error } = await client().rpc("update_user_role", {
+    p_user_id: userId,
+    p_role: role,
+  });
   if (error) throw new Error(error.message);
 }
 
@@ -174,14 +272,17 @@ export async function resolveBarcodeCandidates(
   expectedTargetType?: "product" | "location",
   context = "LOOKUP",
 ): Promise<ResolvedBarcode[]> {
-  if (isDemoMode()) return demoResolveBarcodes(value, expectedTargetType, context);
+  if (isDemoMode())
+    return demoResolveBarcodes(value, expectedTargetType, context);
   const { data, error } = await client().rpc("resolve_barcode_logged", {
     p_barcode_value: value,
     p_expected_target_type: expectedTargetType ?? null,
     p_context: context,
   });
   if (error) throw new Error(error.message);
-  return (data ?? []).map((row) => mapResolvedBarcode(row as Record<string, unknown>));
+  return (data ?? []).map((row) =>
+    mapResolvedBarcode(row as Record<string, unknown>),
+  );
 }
 
 export async function resolveBarcode(
@@ -189,11 +290,17 @@ export async function resolveBarcode(
   expectedTargetType?: "product" | "location",
   context = "LOOKUP",
 ): Promise<ResolvedBarcode | null> {
-  const matches = await resolveBarcodeCandidates(value, expectedTargetType, context);
+  const matches = await resolveBarcodeCandidates(
+    value,
+    expectedTargetType,
+    context,
+  );
   return matches[0] ?? null;
 }
 
-export async function postInventoryMovement(input: MovementInput): Promise<MovementResult> {
+export async function postInventoryMovement(
+  input: MovementInput,
+): Promise<MovementResult> {
   if (isDemoMode()) return demoPostMovement(input);
   const { data, error } = await client().rpc("post_inventory_movement", {
     p_operation: input.operation,
@@ -210,45 +317,96 @@ export async function postInventoryMovement(input: MovementInput): Promise<Movem
   if (error) throw new Error(error.message);
   const result = data as Record<string, unknown>;
   return {
-    transactionId: String(result.transaction_id), operation: input.operation,
+    transactionId: String(result.transaction_id),
+    operation: input.operation,
     product: mapProduct(result.product as Record<string, unknown>),
     location: mapLocation(result.location as Record<string, unknown>),
-    beforeQty: Number(result.before_qty), afterQty: Number(result.after_qty), quantity: Number(result.quantity),
+    beforeQty: Number(result.before_qty),
+    afterQty: Number(result.after_qty),
+    quantity: Number(result.quantity),
   };
 }
 
-export async function reverseTransaction(transactionId: string, reason: string): Promise<InventoryTransaction> {
+export async function reverseTransaction(
+  transactionId: string,
+  reason: string,
+): Promise<InventoryTransaction> {
   if (isDemoMode()) return demoReverseTransaction(transactionId, reason);
-  const { data, error } = await client().rpc("reverse_inventory_transaction", { p_transaction_id: transactionId, p_reason: reason });
+  const { data, error } = await client().rpc("reverse_inventory_transaction", {
+    p_transaction_id: transactionId,
+    p_reason: reason,
+  });
   if (error) throw new Error(error.message);
   return data as InventoryTransaction;
 }
 
 export async function listInventory(search = ""): Promise<InventoryRow[]> {
   if (isDemoMode()) return demoListInventory(search);
-  let query = client().from("inventory_stock_view").select("*").order("location_code");
+  const access = await getMyAccessConfig();
+  let query = client()
+    .from("inventory_stock_view")
+    .select("*")
+    .order("location_code");
+  if (access?.productScopes.length) query = query.in("product_category", access.productScopes);
   if (search.trim()) {
     const keyword = search.trim();
-    query = query.or([`p_code_no.ilike.%${keyword}%`, `code_no.ilike.%${keyword}%`, `master_code_no.ilike.%${keyword}%`, `artist.ilike.%${keyword}%`, `name_ver.ilike.%${keyword}%`, `location_code.ilike.%${keyword}%`].join(","));
+    query = query.or(
+      [
+        `p_code_no.ilike.%${keyword}%`,
+        `code_no.ilike.%${keyword}%`,
+        `master_code_no.ilike.%${keyword}%`,
+        `artist.ilike.%${keyword}%`,
+        `name_ver.ilike.%${keyword}%`,
+        `location_code.ilike.%${keyword}%`,
+      ].join(","),
+    );
   }
   const { data, error } = await query;
   if (error) throw new Error(error.message);
   return (data ?? []).map((row) => ({
-    productId: row.product_id, locationId: row.location_id, pCodeNo: row.p_code_no ?? "", codeNo: row.code_no ?? "",
-    masterCodeNo: row.master_code_no ?? "", artist: row.artist ?? "", nameVer: row.name_ver ?? "",
-    locationCode: row.location_code, zone: row.zone ?? "", qty: Number(row.qty), updatedAt: row.updated_at,
+    productId: row.product_id,
+    locationId: row.location_id,
+    pCodeNo: row.p_code_no ?? "",
+    codeNo: row.code_no ?? "",
+    masterCodeNo: row.master_code_no ?? "",
+    artist: row.artist ?? "",
+    nameVer: row.name_ver ?? "",
+    productCategory: row.product_category === "MD" ? "MD" : "ALBUM",
+    locationCode: row.location_code,
+    zone: row.zone ?? "",
+    facility:
+      row.facility === "DAEJA" || row.facility === "GWANSAN"
+        ? row.facility
+        : inferFacility(row.location_code),
+    qty: Number(row.qty),
+    updatedAt: row.updated_at,
   }));
 }
 
 function mapTransaction(row: Record<string, unknown>): InventoryTransaction {
   return {
-    id: String(row.id), operation: row.operation as "IB" | "OB", status: (row.status ?? "ACTIVE") as InventoryTransaction["status"],
-    productId: String(row.product_id), locationId: String(row.location_id), productLabel: String(row.product_label ?? [row.artist, row.name_ver].filter(Boolean).join(" ")),
-    locationCode: String(row.location_code), qty: Number(row.qty), beforeQty: Number(row.before_qty), afterQty: Number(row.after_qty),
-    productBarcodeValue: String(row.product_barcode_value), locationBarcodeValue: String(row.location_barcode_value), createdAt: String(row.created_at),
-    note: row.note ? String(row.note) : undefined, actorId: row.actor_id ? String(row.actor_id) : undefined, actorLabel: row.actor_label ? String(row.actor_label) : undefined,
-    reversalOf: row.reversal_of ? String(row.reversal_of) : undefined, reversedBy: row.reversed_by ? String(row.reversed_by) : undefined,
-    referenceType: row.reference_type ? String(row.reference_type) : undefined, referenceId: row.reference_id ? String(row.reference_id) : undefined,
+    id: String(row.id),
+    operation: row.operation as "IB" | "OB",
+    status: (row.status ?? "ACTIVE") as InventoryTransaction["status"],
+    productId: String(row.product_id),
+    locationId: String(row.location_id),
+    productLabel: String(
+      row.product_label ?? [row.artist, row.name_ver].filter(Boolean).join(" "),
+    ),
+    locationCode: String(row.location_code),
+    qty: Number(row.qty),
+    beforeQty: Number(row.before_qty),
+    afterQty: Number(row.after_qty),
+    productBarcodeValue: String(row.product_barcode_value),
+    locationBarcodeValue: String(row.location_barcode_value),
+    createdAt: String(row.created_at),
+    note: row.note ? String(row.note) : undefined,
+    actorId: row.actor_id ? String(row.actor_id) : undefined,
+    actorLabel: row.actor_label ? String(row.actor_label) : undefined,
+    reversalOf: row.reversal_of ? String(row.reversal_of) : undefined,
+    reversedBy: row.reversed_by ? String(row.reversed_by) : undefined,
+    referenceType: row.reference_type ? String(row.reference_type) : undefined,
+    referenceId: row.reference_id ? String(row.reference_id) : undefined,
   };
 }
 
@@ -266,11 +424,17 @@ export async function listTransactions(
   kind: TransactionLogKind = "ALL",
   options: LogQueryOptions = {},
 ): Promise<InventoryTransaction[]> {
-  if (isDemoMode()) return demoListTransactions(search, operation, limit, kind, options);
-  let query = client().from("inventory_transaction_view").select("*").order("created_at", { ascending: false }).limit(limit);
+  if (isDemoMode())
+    return demoListTransactions(search, operation, limit, kind, options);
+  let query = client()
+    .from("inventory_transaction_view")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit);
   if (operation !== "ALL") query = query.eq("operation", operation);
   if (kind === "TRANSFER") query = query.eq("reference_type", "TRANSFER");
-  if (kind === "INOUT") query = query.or("reference_type.is.null,reference_type.neq.TRANSFER");
+  if (kind === "INOUT")
+    query = query.or("reference_type.is.null,reference_type.neq.TRANSFER");
   if (options.startAt) query = query.gte("created_at", options.startAt);
   if (options.endBefore) query = query.lt("created_at", options.endBefore);
   if (search.trim()) query = query.ilike("search_text", `%${search.trim()}%`);
@@ -279,18 +443,42 @@ export async function listTransactions(
   return (data ?? []).map((row) => mapTransaction(row));
 }
 
-export async function listRecentTransactions(limit = 20): Promise<InventoryTransaction[]> {
+export async function listRecentTransactions(
+  limit = 20,
+): Promise<InventoryTransaction[]> {
   if (isDemoMode()) return demoListRecentTransactions(limit);
-  const { data, error } = await client().from("inventory_transaction_view").select("*").order("created_at", { ascending: false }).limit(limit);
+  const { data, error } = await client()
+    .from("inventory_transaction_view")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit);
   if (error) throw new Error(error.message);
   return (data ?? []).map((row) => mapTransaction(row));
 }
 
-export async function listProducts(search = "", includeInactive = true): Promise<Product[]> {
+export async function listProducts(
+  search = "",
+  includeInactive = true,
+): Promise<Product[]> {
   if (isDemoMode()) return demoListProducts(search, includeInactive);
-  let query = client().from("products").select("*").order("artist").order("name_ver");
+  const access = await getMyAccessConfig();
+  let query = client()
+    .from("products")
+    .select("*")
+    .order("artist")
+    .order("name_ver");
+  if (access?.productScopes.length) query = query.in("product_category", access.productScopes);
   if (!includeInactive) query = query.eq("active", true);
-  if (search.trim()) query = query.or([`p_code_no.ilike.%${search}%`, `code_no.ilike.%${search}%`, `master_code_no.ilike.%${search}%`, `artist.ilike.%${search}%`, `name_ver.ilike.%${search}%`].join(","));
+  if (search.trim())
+    query = query.or(
+      [
+        `p_code_no.ilike.%${search}%`,
+        `code_no.ilike.%${search}%`,
+        `master_code_no.ilike.%${search}%`,
+        `artist.ilike.%${search}%`,
+        `name_ver.ilike.%${search}%`,
+      ].join(","),
+    );
   const { data, error } = await query;
   if (error) throw new Error(error.message);
   return (data ?? []).map((row) => mapProduct(row));
@@ -298,10 +486,16 @@ export async function listProducts(search = "", includeInactive = true): Promise
 
 export async function createProduct(input: ProductInput): Promise<Product> {
   if (isDemoMode()) return demoCreateProduct(input);
-  const { data, error } = await client().rpc("create_product_with_target", {
-    p_p_code_no: input.pCodeNo, p_code_no: input.codeNo, p_master_code_no: input.masterCodeNo,
-    p_artist: input.artist, p_name_ver: input.nameVer, p_primary_barcode: input.primaryBarcode,
-    p_barcode_source: input.barcodeSource ?? "manufacturer", p_symbology: "AUTO",
+  const { data, error } = await client().rpc("create_product_with_target_v2", {
+    p_p_code_no: input.pCodeNo,
+    p_code_no: input.codeNo,
+    p_master_code_no: input.masterCodeNo,
+    p_artist: input.artist,
+    p_name_ver: input.nameVer,
+    p_primary_barcode: input.primaryBarcode,
+    p_product_category: input.productCategory,
+    p_barcode_source: input.barcodeSource ?? "manufacturer",
+    p_symbology: "AUTO",
   });
   if (error) throw new Error(error.message);
   const products = await listProducts(input.codeNo);
@@ -310,26 +504,34 @@ export async function createProduct(input: ProductInput): Promise<Product> {
   return product;
 }
 
-export async function updateProduct(productId: string, patch: Partial<Product>): Promise<Product> {
+export async function updateProduct(
+  productId: string,
+  patch: Partial<Product>,
+): Promise<Product> {
   if (isDemoMode()) return demoUpdateProduct(productId, patch);
-  const { data, error } = await client().rpc("update_product", {
+  const { data, error } = await client().rpc("update_product_v2", {
     p_product_id: productId,
     p_new_p_code_no: patch.pCodeNo ?? null,
     p_new_code_no: patch.codeNo ?? null,
     p_new_master_code_no: patch.masterCodeNo ?? null,
     p_new_artist: patch.artist ?? null,
     p_new_name_ver: patch.nameVer ?? null,
+    p_new_product_category: patch.productCategory ?? null,
     p_new_active: patch.active ?? null,
   });
   if (error) throw new Error(error.message);
   return mapProduct(data as Record<string, unknown>);
 }
 
-export async function listLocations(search = "", includeInactive = true): Promise<Location[]> {
+export async function listLocations(
+  search = "",
+  includeInactive = true,
+): Promise<Location[]> {
   if (isDemoMode()) return demoListLocations(search, includeInactive);
   let query = client().from("locations").select("*").order("location_code");
   if (!includeInactive) query = query.eq("active", true);
-  if (search.trim()) query = query.or(`location_code.ilike.%${search}%,zone.ilike.%${search}%`);
+  if (search.trim())
+    query = query.or(`location_code.ilike.%${search}%,zone.ilike.%${search}%`);
   const { data, error } = await query;
   if (error) throw new Error(error.message);
   return (data ?? []).map((row) => mapLocation(row));
@@ -337,7 +539,13 @@ export async function listLocations(search = "", includeInactive = true): Promis
 
 export async function createLocation(input: LocationInput): Promise<Location> {
   if (isDemoMode()) return demoCreateLocation(input);
-  const { data, error } = await client().rpc("create_location_with_target", { p_location_code: input.locationCode, p_zone: input.zone, p_barcode_value: input.barcodeValue ?? null, p_symbology: "CODE-128" });
+  const { data, error } = await client().rpc("create_location_with_target_v2", {
+    p_location_code: input.locationCode,
+    p_zone: input.zone,
+    p_facility: input.facility,
+    p_barcode_value: input.barcodeValue ?? null,
+    p_symbology: "CODE-128",
+  });
   if (error) throw new Error(error.message);
   const locations = await listLocations(input.locationCode);
   const location = locations.find((item) => item.id === data) ?? locations[0];
@@ -345,82 +553,172 @@ export async function createLocation(input: LocationInput): Promise<Location> {
   return location;
 }
 
-export async function updateLocation(locationId: string, patch: Partial<Location>): Promise<Location> {
+export async function updateLocation(
+  locationId: string,
+  patch: Partial<Location>,
+): Promise<Location> {
   if (isDemoMode()) return demoUpdateLocation(locationId, patch);
-  const { data, error } = await client().rpc("update_location", {
+  const { data, error } = await client().rpc("update_location_v2", {
     p_location_id: locationId,
     p_new_location_code: patch.locationCode ?? null,
     p_new_zone: patch.zone ?? null,
+    p_new_facility: patch.facility ?? null,
     p_new_active: patch.active ?? null,
   });
   if (error) throw new Error(error.message);
   return mapLocation(data as Record<string, unknown>);
 }
 
-export async function listTargets(targetType: "product" | "location", search = ""): Promise<ScannableTargetOption[]> {
+export async function listTargets(
+  targetType: "product" | "location",
+  search = "",
+): Promise<ScannableTargetOption[]> {
   if (isDemoMode()) return demoListTargets(targetType, search);
-  let query = client().from("scannable_targets_view").select("*").eq("target_type", targetType).limit(100);
+  let query = client()
+    .from("scannable_targets_view")
+    .select("*")
+    .eq("target_type", targetType)
+    .limit(100);
   if (search.trim()) query = query.ilike("search_text", `%${search.trim()}%`);
   const { data, error } = await query.order("label");
   if (error) throw new Error(error.message);
-  return (data ?? []).map((row) => ({ targetType, targetId: row.target_id, scanTargetId: row.scan_target_id, label: row.label, description: row.description ?? "" }));
+  return (data ?? []).map((row) => ({
+    targetType,
+    targetId: row.target_id,
+    scanTargetId: row.scan_target_id,
+    label: row.label,
+    description: row.description ?? "",
+  }));
 }
 
-export async function listBarcodes(search = "", targetType = "ALL"): Promise<BarcodeRecord[]> {
+export async function listBarcodes(
+  search = "",
+  targetType = "ALL",
+): Promise<BarcodeRecord[]> {
   if (isDemoMode()) return demoListBarcodes(search, targetType);
-  let query = client().from("barcode_registry_view").select("*").order("target_label");
+  let query = client()
+    .from("barcode_registry_view")
+    .select("*")
+    .order("target_label");
   if (targetType !== "ALL") query = query.eq("target_type", targetType);
   if (search.trim()) query = query.ilike("search_text", `%${search.trim()}%`);
   const { data, error } = await query;
   if (error) throw new Error(error.message);
   return (data ?? []).map((row) => ({
-    id: row.id, scanTargetId: row.scan_target_id, targetType: row.target_type, targetId: row.target_id, targetLabel: row.target_label,
-    value: row.barcode_value, normalizedValue: row.normalized_value, source: row.source, symbology: row.symbology ?? "", isPrimary: row.is_primary,
-    active: row.active, createdAt: row.created_at,
+    id: row.id,
+    scanTargetId: row.scan_target_id,
+    targetType: row.target_type,
+    targetId: row.target_id,
+    targetLabel: row.target_label,
+    value: row.barcode_value,
+    normalizedValue: row.normalized_value,
+    source: row.source,
+    symbology: row.symbology ?? "",
+    isPrimary: row.is_primary,
+    active: row.active,
+    createdAt: row.created_at,
   }));
 }
 
-export async function registerBarcode(input: BarcodeRegistrationInput): Promise<void> {
+export async function registerBarcode(
+  input: BarcodeRegistrationInput,
+): Promise<void> {
   if (isDemoMode()) return demoRegisterBarcode(input);
   const { error } = await client().rpc("register_barcode", {
-    p_target_type: input.targetType, p_target_id: input.targetId, p_barcode_value: input.barcodeValue,
-    p_source: input.source, p_symbology: input.symbology ?? null, p_make_primary: Boolean(input.makePrimary),
+    p_target_type: input.targetType,
+    p_target_id: input.targetId,
+    p_barcode_value: input.barcodeValue,
+    p_source: input.source,
+    p_symbology: input.symbology ?? null,
+    p_make_primary: Boolean(input.makePrimary),
   });
   if (error) throw new Error(error.message);
 }
 
-export async function updateBarcode(barcodeId: string, patch: { active?: boolean; isPrimary?: boolean }): Promise<void> {
+export async function updateBarcode(
+  barcodeId: string,
+  patch: { active?: boolean; isPrimary?: boolean },
+): Promise<void> {
   if (isDemoMode()) return demoUpdateBarcode(barcodeId, patch);
-  const { error } = await client().rpc("update_barcode_status", { p_barcode_id: barcodeId, p_active: patch.active ?? null, p_make_primary: patch.isPrimary ?? null });
+  const { error } = await client().rpc("update_barcode_status", {
+    p_barcode_id: barcodeId,
+    p_active: patch.active ?? null,
+    p_make_primary: patch.isPrimary ?? null,
+  });
   if (error) throw new Error(error.message);
 }
 
-export async function listScanEvents(search = "", result = "ALL", limit = 1000, options: LogQueryOptions = {}): Promise<ScanEvent[]> {
+export async function listScanEvents(
+  search = "",
+  result = "ALL",
+  limit = 1000,
+  options: LogQueryOptions = {},
+): Promise<ScanEvent[]> {
   if (isDemoMode()) return demoListScanEvents(search, result, limit, options);
-  let query = client().from("scan_event_view").select("*").order("created_at", { ascending: false }).limit(limit);
+  let query = client()
+    .from("scan_event_view")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit);
   if (result !== "ALL") query = query.eq("result", result);
   if (options.startAt) query = query.gte("created_at", options.startAt);
   if (options.endBefore) query = query.lt("created_at", options.endBefore);
   if (search.trim()) query = query.ilike("search_text", `%${search.trim()}%`);
   const { data, error } = await query;
   if (error) throw new Error(error.message);
-  return (data ?? []).map((row) => ({ id: row.id, rawValue: row.raw_value, normalizedValue: row.normalized_value, expectedTargetType: row.expected_target_type ?? undefined, resolvedTargetType: row.resolved_target_type ?? undefined, targetLabel: row.target_label ?? undefined, result: row.result, context: row.context ?? undefined, actorId: row.actor_id ?? undefined, actorLabel: row.actor_label ?? undefined, createdAt: row.created_at }));
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    rawValue: row.raw_value,
+    normalizedValue: row.normalized_value,
+    expectedTargetType: row.expected_target_type ?? undefined,
+    resolvedTargetType: row.resolved_target_type ?? undefined,
+    targetLabel: row.target_label ?? undefined,
+    result: row.result,
+    context: row.context ?? undefined,
+    actorId: row.actor_id ?? undefined,
+    actorLabel: row.actor_label ?? undefined,
+    createdAt: row.created_at,
+  }));
 }
 
-export async function listAuditLogs(search = "", limit = 1000, options: LogQueryOptions = {}): Promise<AuditLog[]> {
+export async function listAuditLogs(
+  search = "",
+  limit = 1000,
+  options: LogQueryOptions = {},
+): Promise<AuditLog[]> {
   if (isDemoMode()) return demoListAuditLogs(search, limit, options);
-  let query = client().from("audit_log_view").select("*").order("created_at", { ascending: false }).limit(limit);
+  let query = client()
+    .from("audit_log_view")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit);
   if (options.startAt) query = query.gte("created_at", options.startAt);
   if (options.endBefore) query = query.lt("created_at", options.endBefore);
   if (search.trim()) query = query.ilike("search_text", `%${search.trim()}%`);
   const { data, error } = await query;
   if (error) throw new Error(error.message);
-  return (data ?? []).map((row) => ({ id: row.id, action: row.action, entityType: row.entity_type, entityId: row.entity_id ?? undefined, entityLabel: row.entity_label ?? undefined, before: row.before_data, after: row.after_data, note: row.note ?? undefined, actorId: row.actor_id ?? undefined, actorLabel: row.actor_label ?? undefined, createdAt: row.created_at }));
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    action: row.action,
+    entityType: row.entity_type,
+    entityId: row.entity_id ?? undefined,
+    entityLabel: row.entity_label ?? undefined,
+    before: row.before_data,
+    after: row.after_data,
+    note: row.note ?? undefined,
+    actorId: row.actor_id ?? undefined,
+    actorLabel: row.actor_label ?? undefined,
+    createdAt: row.created_at,
+  }));
 }
 
-export async function importInventoryRows(rows: ImportInventoryRow[]): Promise<ImportResult> {
+export async function importInventoryRows(
+  rows: ImportInventoryRow[],
+): Promise<ImportResult> {
   if (isDemoMode()) return demoImportInventoryRows(rows);
-  const { data, error } = await client().rpc("import_inventory_rows", { p_rows: rows });
+  const { data, error } = await client().rpc("import_inventory_rows", {
+    p_rows: rows,
+  });
   if (error) throw new Error(error.message);
   return data as ImportResult;
 }
@@ -442,30 +740,61 @@ export type RealtimeScope =
 
 const REALTIME_SCOPE_TABLES: Record<RealtimeScope, readonly string[]> = {
   user: ["profiles"],
-  dashboard: ["inventory_balances", "inventory_transactions", "scan_events", "products", "locations"],
+  dashboard: [
+    "inventory_balances",
+    "inventory_transactions",
+    "scan_events",
+    "products",
+    "locations",
+  ],
   inventory: ["inventory_balances", "products", "locations", "barcodes"],
   logs: ["inventory_transactions", "scan_events", "audit_logs"],
   workRequests: [
-    "work_requests", "work_request_items", "work_request_candidates", "work_request_scans",
-    "work_request_events", "work_request_notifications", "work_request_change_requests",
-    "work_request_documents", "work_request_document_items", "work_request_document_allocations",
-    "worker_kpi_settings", "worker_kpi_overrides", "business_calendar",
+    "work_requests",
+    "work_request_items",
+    "work_request_candidates",
+    "work_request_scans",
+    "work_request_events",
+    "work_request_notifications",
+    "work_request_change_requests",
+    "work_request_documents",
+    "work_request_document_items",
+    "work_request_document_allocations",
+    "worker_kpi_settings",
+    "worker_kpi_overrides",
+    "business_calendar",
   ],
   utilization: ["utilization_zones", "inventory_balances", "locations"],
-  users: ["profiles", "worker_kpi_settings", "worker_kpi_overrides", "terms_acceptances", "profile_name_history"],
+  users: [
+    "profiles",
+    "worker_kpi_settings",
+    "worker_kpi_overrides",
+    "terms_acceptances",
+    "profile_name_history",
+  ],
   transfers: ["transfer_jobs", "transfer_job_items", "inventory_balances"],
   products: ["products", "barcodes", "scan_targets"],
   barcodes: ["barcodes", "scan_targets", "products", "locations"],
   locations: ["locations", "barcodes", "scan_targets", "inventory_balances"],
   externalTransfers: [
-    "external_transfer_jobs", "external_transfer_items", "external_transfer_allocations",
-    "external_shipment_documents", "external_shipment_items", "external_shipment_allocations",
+    "external_transfer_jobs",
+    "external_transfer_items",
+    "external_transfer_allocations",
+    "external_shipment_documents",
+    "external_shipment_items",
+    "external_shipment_allocations",
     "inventory_balances",
   ],
   locationMap: [
-    "locations", "inventory_balances", "transfer_jobs", "transfer_job_items",
-    "inventory_cycle_settings", "inventory_cycle_item_profiles", "inventory_cycle_location_profiles",
-    "inventory_cycle_dirty_locations", "location_map_zone_settings",
+    "locations",
+    "inventory_balances",
+    "transfer_jobs",
+    "transfer_job_items",
+    "inventory_cycle_settings",
+    "inventory_cycle_item_profiles",
+    "inventory_cycle_location_profiles",
+    "inventory_cycle_dirty_locations",
+    "location_map_zone_settings",
   ],
 };
 
@@ -493,7 +822,8 @@ export function subscribeToInventory(
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let fallbackTimer: ReturnType<typeof setInterval> | null = null;
 
-  const isHidden = () => typeof document !== "undefined" && document.visibilityState === "hidden";
+  const isHidden = () =>
+    typeof document !== "undefined" && document.visibilityState === "hidden";
 
   const execute = async () => {
     if (disposed) return;
@@ -556,19 +886,32 @@ export function subscribeToInventory(
     if (supabase) {
       realtimeSubscriptionSequence += 1;
       const channelName = [
-        "wms-live", scope, Date.now().toString(36),
-        realtimeSubscriptionSequence.toString(36), Math.random().toString(36).slice(2, 8),
+        "wms-live",
+        scope,
+        Date.now().toString(36),
+        realtimeSubscriptionSequence.toString(36),
+        Math.random().toString(36).slice(2, 8),
       ].join("-");
       const channel = supabase.channel(channelName);
       for (const table of tables) {
-        channel.on("postgres_changes", { event: "*", schema: "public", table }, () => schedule());
+        channel.on(
+          "postgres_changes",
+          { event: "*", schema: "public", table },
+          () => schedule(),
+        );
       }
       channel.subscribe((status, error) => {
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-          console.error(`Supabase Realtime subscription failed (${scope})`, status, error);
+          console.error(
+            `Supabase Realtime subscription failed (${scope})`,
+            status,
+            error,
+          );
         }
       });
-      unsubscribeSource = () => { void supabase.removeChannel(channel); };
+      unsubscribeSource = () => {
+        void supabase.removeChannel(channel);
+      };
     }
   }
 

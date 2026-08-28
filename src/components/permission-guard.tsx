@@ -2,6 +2,7 @@
 
 import { hasPermission, type Permission } from "@/lib/permissions";
 import { useUser } from "@/components/user-provider";
+import { usePathname } from "next/navigation";
 
 export function PermissionGuard({
   permission,
@@ -13,8 +14,14 @@ export function PermissionGuard({
   fallback?: React.ReactNode;
 }) {
   const { user, loading } = useUser();
+  const pathname = usePathname();
+  const menuKey = pathname === "/" ? "dashboard" : pathname.split("/")[1];
   if (loading) return <div className="center-panel">권한 확인 중...</div>;
-  if (!user || !hasPermission(user.role, permission)) {
+  if (
+    !user ||
+    !hasPermission(user.role, permission) ||
+    user.menuAccess?.[menuKey] === "HIDDEN"
+  ) {
     return fallback ?? (
       <section className="panel">
         <h2>접근 권한이 없습니다.</h2>

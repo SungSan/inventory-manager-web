@@ -236,3 +236,6 @@ input[type="checkbox"] { width: 18px; min-height: 18px; padding: 0; }
 @media (max-width: 720px) {
   .zone-stock-heading { align-items: flex-start; flex-direction: column; }
 }
+.segmented-control { display: inline-flex; gap: 4px; padding: 4px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-soft); }
+.segmented-control button { min-height: 38px; padding: 0 18px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font-weight: 700; cursor: pointer; }
+.segmented-control button.active { background: var(--surface); color: var(--primary); box-shadow: 0 1px 4px rgb(15 23 42 / 12%); }

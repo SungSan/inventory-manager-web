@@ -1,0 +1,170 @@
+.headerActions,
+.toolbar,
+.jobMeta,
+.scanStats,
+.focusMeta,
+.focusProgress,
+.shipmentHeading {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.jobGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.jobCard {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.shipmentList {
+  display: grid;
+  gap: 10px;
+}
+.shipment {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.shipmentHeading {
+  justify-content: space-between;
+}
+.scanPanel {
+  position: sticky;
+  top: 74px;
+  z-index: 5;
+}
+.scanInput {
+  font-size: 1.2rem;
+  font-weight: 800;
+  min-height: 56px;
+}
+.itemList {
+  display: grid;
+  gap: 10px;
+}
+.item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 16px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.itemComplete {
+  border-color: #16a34a;
+  background: #f0fdf4;
+}
+.locations {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.focusBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  background: rgba(3, 7, 18, 0.7);
+  padding: 20px;
+}
+.focusCard {
+  width: min(760px, 100%);
+  padding: 34px;
+  border-radius: 24px;
+  background: white;
+  text-align: center;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.35);
+}
+.focusCard h2 {
+  font-size: clamp(1.5rem, 4vw, 2.6rem);
+  margin: 10px 0;
+}
+.focusCount {
+  font-size: clamp(4rem, 15vw, 8rem);
+  font-weight: 900;
+  line-height: 1;
+  color: #2563eb;
+}
+.completeCard {
+  background: #dcfce7;
+  animation: successPulse 0.35s ease;
+}
+.warningFlash {
+  background: #dc2626;
+  color: white;
+  animation: warningFlash 0.18s ease 3;
+}
+.warningFlash .focusCount {
+  color: white;
+}
+.manualBox {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  margin-top: 20px;
+}
+.progressBar {
+  height: 16px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  overflow: hidden;
+}
+.progressBar span {
+  display: block;
+  height: 100%;
+  background: #2563eb;
+  transition: width 0.12s;
+}
+.completedBar span {
+  background: #16a34a;
+}
+.scanForm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+.scanForm label {
+  margin: 0;
+}
+@keyframes warningFlash {
+  from {
+    filter: brightness(1);
+  }
+  to {
+    filter: brightness(1.7);
+  }
+}
+@keyframes successPulse {
+  50% {
+    transform: scale(1.025);
+  }
+}
+@media (max-width: 760px) {
+  .jobGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .item {
+    grid-template-columns: 1fr;
+  }
+  .focusCard {
+    padding: 24px;
+  }
+  .scanPanel {
+    top: 58px;
+  }
+  .scanForm {
+    grid-template-columns: 1fr;
+  }
+  .scanForm button {
+    width: 100%;
+  }
+}
