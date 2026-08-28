@@ -211,8 +211,10 @@ function OutboundProgressContent() {
     selectedJob?.shipments.find(
       (shipment) => shipment.id === activeShipmentId,
     ) ?? null;
-  const refocus = () =>
+  const refocus = () => {
+    if (cameraOpen) return;
     window.setTimeout(() => scannerRef.current?.focus(), 20);
+  };
 
   function showFocus(
     item: OutboundPickingItem,
@@ -713,7 +715,9 @@ function OutboundProgressContent() {
         </>
       ) : null}
       {focus && activeShipment ? (
-        <div className={styles.focusBackdrop}>
+        <div
+          className={`${styles.focusBackdrop} ${cameraOpen ? styles.cameraFocusBackdrop : ""}`}
+        >
           <section
             className={`${styles.focusCard} ${focus.kind === "EXCESS" ? styles.warningFlash : focus.kind === "COMPLETE" ? styles.completeCard : ""}`}
           >
@@ -782,6 +786,7 @@ function OutboundProgressContent() {
       ) : null}
       {cameraOpen ? (
         <CameraScanner
+          continuousLayout={Boolean(activeShipment)}
           onClose={() => {
             setCameraOpen(false);
             refocus();
@@ -789,7 +794,8 @@ function OutboundProgressContent() {
           onDetected={(value) => {
             if (!activeShipment) {
               processScan(value);
-              return true;
+              setCameraOpen(false);
+              return false;
             }
             const barcode = normalizeBarcode(value);
             const item = activeShipment.items.find(
