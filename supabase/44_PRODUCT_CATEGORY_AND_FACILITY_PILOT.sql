@@ -9,11 +9,6 @@ alter table public.products add constraint products_product_category_check check
 alter table public.locations drop constraint if exists locations_facility_check;
 alter table public.locations add constraint locations_facility_check check (facility in ('DAEJA','GWANSAN','UNASSIGNED'));
 
--- 인덱스는 기존 로케이션을 갱신하기 전에 생성한다.
--- 같은 트랜잭션의 UPDATE로 지연 트리거가 대기 중이면 PostgreSQL이 CREATE INDEX를 거부한다.
-create index if not exists idx_products_product_category on public.products(product_category,active);
-create index if not exists idx_locations_facility on public.locations(facility,active);
-
 -- 명확한 기존 코드만 초기 분류한다. 나머지는 로케이션 관리에서 직접 지정한다.
 update public.locations set facility='DAEJA' where facility='UNASSIGNED' and regexp_replace(upper(location_code),'[^A-Z0-9]','','g') like 'D1%';
 update public.locations set facility='GWANSAN' where facility='UNASSIGNED' and (regexp_replace(upper(location_code),'[^A-Z0-9]','','g') like 'K1%' or regexp_replace(upper(location_code),'[^A-Z0-9]','','g') like 'KN%');
