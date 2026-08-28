@@ -369,7 +369,7 @@ export async function listInventory(search = ""): Promise<InventoryRow[]> {
       .select("*")
       .order("location_code")
       .order("product_id")
-      .range(offset, offset + pageSize - 1);
+      .range(offset, offset + inventoryPageSize - 1);
     if (access?.productScopes.length) query = query.in("product_category", access.productScopes);
     if (keyword) {
       query = query.or(
@@ -387,8 +387,8 @@ export async function listInventory(search = ""): Promise<InventoryRow[]> {
     if (error) throw new Error(error.message);
     const page = (data ?? []) as InventoryStockViewRow[];
     rows.push(...page);
-    if (page.length < pageSize) break;
-    offset += pageSize;
+    if (page.length < inventoryPageSize) break;
+    offset += inventoryPageSize;
   }
 
   return rows.map((row) => ({
