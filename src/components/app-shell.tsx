@@ -19,7 +19,7 @@ import { listUsers, subscribeToInventory } from "@/lib/inventory-api";
 import type { UserProfile } from "@/types/domain";
 import styles from "./app-shell.module.css";
 
-type NavItem = { href: string; label: string; permission?: Permission; benefitFeature?: boolean };
+type NavItem = { key: string; href: string; label: string; permission?: Permission; benefitFeature?: boolean };
 type PresenceUser = { userId: string; displayName: string; pageLabel: string; path: string; onlineAt: number; lastActiveAt: number };
 type PresenceDisplay = PresenceUser & { disconnectedAt?: number };
 
@@ -28,24 +28,25 @@ const OFFLINE_VISIBLE_MS = 10 * 60 * 1000;
 const ACTIVITY_TRACK_THROTTLE_MS = 30 * 1000;
 
 const nav: NavItem[] = [
-  { href: "/", label: "대시보드", permission: "view_dashboard" },
-  { href: "/scan", label: "입고·출고", permission: "scan_inventory" },
-  { href: "/inventory", label: "재고조회", permission: "view_inventory" },
-  { href: "/transfers", label: "재고이관", permission: "transfer_inventory" },
-  { href: "/external-transfers", label: "외부이관", permission: "external_transfer" },
-  { href: "/work-requests", label: "업무요청", permission: "work_requests" },
-  { href: "/benefits", label: "특전 자동계산", benefitFeature: true },
-  { href: "/shipment-documents", label: "출고명세서", permission: "shipment_documents" },
-  { href: "/products", label: "상품관리", permission: "manage_products" },
-  { href: "/barcodes", label: "바코드", permission: "manage_barcodes" },
-  { href: "/locations", label: "로케이션", permission: "manage_locations" },
-  { href: "/location-map", label: "로케이션맵", permission: "view_inventory" },
-  { href: "/utilization", label: "용적률", permission: "view_inventory" },
-  { href: "/stocktakes", label: "재고실사", permission: "stocktake_inventory" },
-  { href: "/logs", label: "로그", permission: "view_logs" },
-  { href: "/import", label: "데이터이전", permission: "import_data" },
-  { href: "/users", label: "사용자", permission: "manage_users" },
-  { href: "/my-consent", label: "내 동의내역", permission: "view_dashboard" },
+  { key: "dashboard", href: "/", label: "대시보드", permission: "view_dashboard" },
+  { key: "scan", href: "/scan", label: "입고·출고", permission: "scan_inventory" },
+  { key: "outbound-progress", href: "/outbound-progress", label: "출고 진행", permission: "scan_inventory" },
+  { key: "inventory", href: "/inventory", label: "재고조회", permission: "view_inventory" },
+  { key: "transfers", href: "/transfers", label: "재고이관", permission: "transfer_inventory" },
+  { key: "external-transfers", href: "/external-transfers", label: "외부이관", permission: "external_transfer" },
+  { key: "work-requests", href: "/work-requests", label: "업무요청", permission: "work_requests" },
+  { key: "benefits", href: "/benefits", label: "특전 자동계산", benefitFeature: true },
+  { key: "shipment-documents", href: "/shipment-documents", label: "출고명세서", permission: "shipment_documents" },
+  { key: "products", href: "/products", label: "상품관리", permission: "manage_products" },
+  { key: "barcodes", href: "/barcodes", label: "바코드", permission: "manage_barcodes" },
+  { key: "locations", href: "/locations", label: "로케이션", permission: "manage_locations" },
+  { key: "location-map", href: "/location-map", label: "로케이션맵", permission: "view_inventory" },
+  { key: "utilization", href: "/utilization", label: "용적률", permission: "view_inventory" },
+  { key: "stocktakes", href: "/stocktakes", label: "재고실사", permission: "stocktake_inventory" },
+  { key: "logs", href: "/logs", label: "로그", permission: "view_logs" },
+  { key: "import", href: "/import", label: "데이터이전", permission: "import_data" },
+  { key: "users", href: "/users", label: "사용자", permission: "manage_users" },
+  { key: "my-consent", href: "/my-consent", label: "내 동의내역", permission: "view_dashboard" },
 ];
 
 const mobilePrimary = [
@@ -264,6 +265,8 @@ function ShellContent({ children }: { children: React.ReactNode }) {
 
   const visibleNav = useMemo(
     () => user ? nav.filter((item) => {
+      const override = user.menuAccess?.[item.key];
+      if (override === "HIDDEN") return false;
       if (item.benefitFeature) return benefitFeatureAllowed;
       return item.permission ? hasPermission(user.role, item.permission) : false;
     }) : [],
