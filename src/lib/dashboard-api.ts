@@ -80,18 +80,51 @@ export async function getFacilityFlowSummaries(
   if (!supabase) return result;
   const nextDay = new Date(`${endDate}T00:00:00+09:00`);
   nextDay.setUTCDate(nextDay.getUTCDate() + 1);
-  const { data, error } = await supabase
-    .from("inventory_transaction_view")
-    .select(
-      "operation,qty,location_code,created_at,status,reference_type,reversal_of",
-    )
-    .gte("created_at", new Date(`${startDate}T00:00:00+09:00`).toISOString())
-    .lt("created_at", nextDay.toISOString())
-    .neq("status", "REVERSED")
-    .neq("reference_type", "TRANSFER")
-    .limit(10000);
-  if (error) throw new Error(error.message);
-  for (const row of data ?? []) {
+  const startIso = new Date(`${startDate}T00:00:00+09:00`).toISOString();
+  const endIso = nextDay.toISOString();
+  const rows: Array<{
+    id: string;
+    operation: string;
+    qty: number;
+    location_code: string | null;
+    facility: string | null;
+    created_at: string;
+    status: string | null;
+    reference_type: string | null;
+    reversal_of: string | null;
+  }> = [];
+
+  // Supabase는 프로젝트의 API 최대 행 수(통상 1,000행)를 한 요청에만
+  // 반환한다. 기간 내 거래가 그보다 많아도 센터별 합계가 잘리지 않도록
+  // 안정적인 정렬 키로 마지막 페이지까지 조회한다.
+  let offset = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from("inventory_transaction_view")
+      .select(
+        "id,operation,qty,location_code,facility,created_at,status,reference_type,reversal_of",
+      )
+      .gte("created_at", startIso)
+      .lt("created_at", endIso)
+      .in("operation", ["IB", "OB"])
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+    const page = (data ?? []) as typeof rows;
+    rows.push(...page);
+    if (page.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+
+  const transactionById = new Map(rows.map((row) => [row.id, row]));
+  for (const row of rows) {
+    if ((row.status ?? "ACTIVE") === "REVERSED") continue;
+    if ((row.reference_type ?? "") === "TRANSFER") continue;
+    const original = row.reversal_of
+      ? transactionById.get(row.reversal_of)
+      : undefined;
+    if ((original?.reference_type ?? "") === "TRANSFER") continue;
     const hour = Number(
       new Intl.DateTimeFormat("en-US", {
         timeZone: "Asia/Seoul",
@@ -100,7 +133,14 @@ export async function getFacilityFlowSummaries(
       }).format(new Date(row.created_at)),
     );
     if (hour < 7) continue;
-    const facility = inferFacility(row.location_code ?? "");
+    const inferredFacility = inferFacility(row.location_code ?? "");
+    // 운영 규칙상 D로 시작하는 LOC는 DB의 과거 분류값과 무관하게 대자동이다.
+    const facility =
+      inferredFacility !== "UNASSIGNED"
+        ? inferredFacility
+        : row.facility === "DAEJA" || row.facility === "GWANSAN"
+          ? row.facility
+          : "UNASSIGNED";
     if (row.operation === "IB") {
       result[facility].inboundQty += Number(row.qty);
       result[facility].inboundCount += 1;
