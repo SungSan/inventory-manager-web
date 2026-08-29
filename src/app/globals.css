@@ -75,7 +75,9 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 
 @media (max-width: 720px) {
   /* Let the page own vertical scrolling so fixed mobile navigation cannot cover the last row. */
-  .table-wrap { max-height: none; }
+  .table-wrap:not(.camera-modal .table-wrap) {
+    max-height: none;
+  }
 }
 table { width: 100%; border-collapse: collapse; white-space: nowrap; }
 th, td { padding: 13px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: middle; }
@@ -158,6 +160,7 @@ input[type="checkbox"] { width: 18px; min-height: 18px; padding: 0; }
 .camera-backdrop-continuous .camera-help { display: none; }
 .login-page, .center-panel { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
 .login-card { width: min(430px, 100%); display: grid; gap: 16px; padding: 28px; background: #fff; border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); }
+.login-brand-logo { display: block; width: min(284px, 100%); height: auto; margin: 0 auto 6px; }
 
 .barcode-svg { width: 100%; max-width: 260px; height: auto; }
 .print-label-sheet { display: none; }

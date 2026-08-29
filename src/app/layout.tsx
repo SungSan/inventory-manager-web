@@ -15,7 +15,14 @@ export const metadata: Metadata = {
   title: "SAN WMS",
   description: "상품·로케이션 바코드 기반 실시간 재고관리",
   manifest: "/manifest.webmanifest",
-  icons: { icon: "/icon-192.png", apple: "/icon-192.png" },
+  icons: {
+    icon: [
+      { url: "/san-wms-favicon.ico" },
+      { url: "/san-wms-favicon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/san-wms-app-icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: "/san-wms-app-icon-192.png",
+  },
 };
 
 export const viewport: Viewport = {
@@ -24,7 +31,7 @@ export const viewport: Viewport = {
   minimumScale: 1,
   maximumScale: 5,
   userScalable: true,
-  themeColor: "#16202a",
+  themeColor: "#171B1F",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
