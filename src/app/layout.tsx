@@ -14,14 +14,14 @@ import { PwaRegister } from "@/components/pwa-register";
 export const metadata: Metadata = {
   title: "SAN WMS",
   description: "상품·로케이션 바코드 기반 실시간 재고관리",
-  manifest: "/manifest.webmanifest",
+  manifest: "/manifest.webmanifest?v=491",
   icons: {
     icon: [
-      { url: "/san-wms-favicon.ico" },
-      { url: "/san-wms-favicon-32.png", sizes: "32x32", type: "image/png" },
-      { url: "/san-wms-app-icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/san-wms-favicon.ico?v=491" },
+      { url: "/san-wms-favicon-32.png?v=491", sizes: "32x32", type: "image/png" },
+      { url: "/san-wms-app-icon-192.png?v=491", sizes: "192x192", type: "image/png" },
     ],
-    apple: "/san-wms-app-icon-192.png",
+    apple: "/san-wms-app-icon-192.png?v=491",
   },
 };
 
