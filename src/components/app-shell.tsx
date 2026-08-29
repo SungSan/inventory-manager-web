@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
@@ -308,9 +309,8 @@ function ShellContent({ children }: { children: React.ReactNode }) {
   function Brand() {
     return (
       <div className={styles.brand}>
-        <span className={styles.brandMark}>S</span>
+        <Image className={styles.brandLogo} src="/san-wms-logo-horizontal-light.svg" alt="SAN WMS" width={178} height={40} />
         <div className={styles.brandText}>
-          <strong>SAN WMS</strong>
           <small>재고관리 · {APP_VERSION_LABEL}</small>
         </div>
       </div>
@@ -357,7 +357,9 @@ function ShellContent({ children }: { children: React.ReactNode }) {
         onMouseEnter={openDrawerFromHover}
         onMouseLeave={scheduleHoverClose}
       >
-        <Link href="/" className={styles.railBrand} aria-label="대시보드" title="대시보드">S</Link>
+        <Link href="/" className={styles.railBrand} aria-label="SAN WMS 대시보드" title="대시보드">
+          <Image src="/san-wms-app-icon-192.png" alt="" width={38} height={38} priority />
+        </Link>
         <button
           type="button"
           className={styles.railMenuButton}
@@ -414,6 +416,7 @@ function ShellContent({ children }: { children: React.ReactNode }) {
           >
             ☰
           </button>
+          <Image className={styles.workspaceBrandIcon} src="/san-wms-app-icon-192.png" alt="SAN WMS" width={38} height={38} priority />
           <div className={styles.workspaceTitle}>
             <p className="eyebrow">SAN WMS · {APP_VERSION_LABEL}</p>
             <h1>재고관리</h1>

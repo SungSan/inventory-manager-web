@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getSupabaseClient, isDemoMode } from "@/lib/supabase";
@@ -57,7 +58,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             }
           }}
         >
-          <p className="eyebrow">SAN WMS</p>
+          <Image className="login-brand-logo" src="/san-wms-logo-horizontal-dark.svg" alt="SAN WMS" width={284} height={64} priority />
           <h1>작업자 로그인</h1>
           <label>이메일<input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></label>
           <label>비밀번호<input type="password" required value={password} onChange={(event) => setPassword(event.target.value)} /></label>

@@ -32,12 +32,12 @@
 }
 
 .railBrand {
-  background: #4f86ff;
-  color: #fff;
-  font-size: 19px;
-  font-weight: 900;
-  box-shadow: 0 8px 18px rgba(79,134,255,.24);
+  overflow: hidden;
+  background: #171b1f;
+  box-shadow: 0 8px 18px rgba(0,0,0,.24);
 }
+
+.railBrand img { display: block; width: 100%; height: 100%; }
 
 .railMenuButton {
   color: #dce5f2;
@@ -81,32 +81,18 @@
 .railStatusDemo { background: #f0ba45; }
 
 .brand {
-  display: flex;
-  gap: 12px;
-  align-items: center;
+  display: grid;
+  gap: 4px;
+  align-content: center;
   min-height: 78px;
   padding: 18px 18px 14px;
 }
 
-.brandMark {
-  display: grid;
-  flex: 0 0 auto;
-  width: 38px;
-  height: 38px;
-  place-items: center;
-  border-radius: 11px;
-  background: #4f86ff;
-  color: #fff;
-  font-size: 20px;
-  font-weight: 900;
-  box-shadow: 0 8px 20px rgba(79,134,255,.25);
-}
+.brandLogo { display: block; width: 178px; max-width: 100%; height: auto; }
 
 .brandText { min-width: 0; }
-.brandText strong,
 .brandText small { display: block; }
-.brandText strong { font-size: 15px; letter-spacing: .02em; }
-.brandText small { margin-top: 3px; color: #aebbd0; font-size: 11px; font-weight: 700; }
+.brandText small { color: #aebbd0; font-size: 11px; font-weight: 700; white-space: nowrap; }
 
 .sideNav {
   display: grid;
@@ -273,6 +259,7 @@
 }
 
 .workspaceTitle { min-width: 0; }
+.workspaceBrandIcon { display: block; flex: 0 0 auto; width: 38px; height: 38px; border-radius: 10px; }
 .workspaceTitle p { margin-bottom: 4px; }
 .workspaceTitle h1 { margin: 0; font-size: 22px; }
 .workspaceActions { display: flex; align-items: center; gap: 8px; }
@@ -385,6 +372,7 @@
   .workspaceHeader { min-height: 62px; padding: 10px 12px; }
   .workspaceTitle p { display: none; }
   .workspaceTitle h1 { font-size: 17px; }
+  .workspaceBrandIcon { width: 34px; height: 34px; border-radius: 9px; }
   .workspaceActions { margin-left: auto; }
   .presenceSummary { min-height: 36px; padding: 7px 9px; }
   .content { padding: 18px 14px 0; }

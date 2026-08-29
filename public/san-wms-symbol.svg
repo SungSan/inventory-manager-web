@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">SAN WMS symbol</title>
+  <path fill="#171B1F" d="M58 148 256 34l78 45-57 33-21-12-133 77 139 80v149L58 288v-65l147 85v-34L58 189z"/>
+  <path fill="#171B1F" d="m300 189 55 32 55 94V158l58 34v222l-58 34V354l-55-94v156l-55 32z"/>
+  <path fill="#FF5A00" d="m162 88 94-54 107 62v67l-107-62-94 55z"/>
+  <path fill="#FF5A00" d="m190 188 66-38 66 38-37 22v246l-58 34V210z"/>
+</svg>
