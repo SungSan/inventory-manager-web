@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getDashboardFlowStats,
-  getDashboardMetrics,
   getFacilityDashboardMetrics,
   getFacilityFlowSummaries,
   type DashboardFlowPeriod,
@@ -12,8 +11,7 @@ import {
   type FacilityDashboardMetrics,
   type FacilityFlowSummaries,
 } from "@/lib/dashboard-api";
-import { listScanEvents, subscribeToInventory } from "@/lib/inventory-api";
-import type { ScanEvent } from "@/types/domain";
+import { subscribeToInventory } from "@/lib/inventory-api";
 import styles from "./dashboard.module.css";
 
 const emptyMetrics: DashboardMetrics = {
@@ -97,12 +95,10 @@ function fallbackPeriodLabel(
 }
 
 export default function DashboardPage() {
-  const [overview, setOverview] = useState<DashboardMetrics>(emptyMetrics);
   const [facilityOverview, setFacilityOverview] =
     useState<FacilityDashboardMetrics>(emptyFacilityMetrics);
   const [facilityFlow, setFacilityFlow] =
     useState<FacilityFlowSummaries>(emptyFacilityFlow);
-  const [scans, setScans] = useState<ScanEvent[]>([]);
   const [overviewError, setOverviewError] = useState("");
   const [period, setPeriod] = useState<DashboardFlowPeriod>("DAY");
   const [anchorDate, setAnchorDate] = useState(kstToday);
@@ -113,14 +109,8 @@ export default function DashboardPage() {
 
   const loadOverview = useCallback(async () => {
     try {
-      const [metrics, facilityMetrics, scanRows] = await Promise.all([
-        getDashboardMetrics(),
-        getFacilityDashboardMetrics(),
-        listScanEvents("", "ALL", 100),
-      ]);
-      setOverview(metrics);
+      const facilityMetrics = await getFacilityDashboardMetrics();
       setFacilityOverview(facilityMetrics);
-      setScans(scanRows);
       setOverviewError("");
     } catch (cause) {
       setOverviewError(
@@ -139,7 +129,7 @@ export default function DashboardPage() {
       if (requestId !== flowRequestId.current) return;
       setFlow(result);
       setFacilityFlow(
-        await getFacilityFlowSummaries(result.startDate, result.endDate),
+        await getFacilityFlowSummaries(result.startDate, result.endDate, result),
       );
       setFlowError("");
     } catch (cause) {
@@ -168,17 +158,9 @@ export default function DashboardPage() {
           void loadOverview();
           void loadFlow();
         },
-        { scope: "dashboard", fallbackMs: 60_000 },
+        { scope: "dashboard", debounceMs: 2_000, fallbackMs: 180_000 },
       ),
     [loadFlow, loadOverview],
-  );
-
-  const metrics = useMemo(
-    () => ({
-      ...overview,
-      scanFailures: scans.filter((item) => item.result !== "SUCCESS").length,
-    }),
-    [overview, scans],
   );
 
   const maxFlowQty = useMemo(
