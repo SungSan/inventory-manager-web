@@ -59,6 +59,10 @@ export async function getFacilityDashboardMetrics(): Promise<FacilityDashboardMe
 export async function getFacilityFlowSummaries(
   startDate: string,
   endDate: string,
+  overall: Pick<
+    DashboardFlowStats,
+    "inboundQty" | "outboundQty" | "inboundCount" | "outboundCount"
+  >,
 ): Promise<FacilityFlowSummaries> {
   const result: FacilityFlowSummaries = {
     DAEJA: { inboundQty: 0, outboundQty: 0, inboundCount: 0, outboundCount: 0 },
@@ -94,9 +98,9 @@ export async function getFacilityFlowSummaries(
     reversal_of: string | null;
   }> = [];
 
-  // Supabase는 프로젝트의 API 최대 행 수(통상 1,000행)를 한 요청에만
-  // 반환한다. 기간 내 거래가 그보다 많아도 센터별 합계가 잘리지 않도록
-  // 안정적인 정렬 키로 마지막 페이지까지 조회한다.
+  // 전체 합계는 DB RPC가 이미 정확하게 계산한다. 휴대폰으로 모든 거래를
+  // 다시 내려받지 않고 관산동으로 명시된 거래만 조회한 뒤, 나머지를 현재
+  // 운영센터인 대자동으로 계산한다.
   let offset = 0;
   while (true) {
     const { data, error } = await supabase
@@ -107,6 +111,7 @@ export async function getFacilityFlowSummaries(
       .gte("created_at", startIso)
       .lt("created_at", endIso)
       .in("operation", ["IB", "OB"])
+      .eq("facility", "GWANSAN")
       .order("created_at", { ascending: true })
       .order("id", { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1);
@@ -133,23 +138,27 @@ export async function getFacilityFlowSummaries(
       }).format(new Date(row.created_at)),
     );
     if (hour < 7) continue;
-    const inferredFacility = inferFacility(row.location_code ?? "");
-    // 운영 규칙상 D로 시작하는 LOC는 DB의 과거 분류값과 무관하게 대자동이다.
-    const facility =
-      inferredFacility !== "UNASSIGNED"
-        ? inferredFacility
-        : row.facility === "DAEJA" || row.facility === "GWANSAN"
-          ? row.facility
-          : "UNASSIGNED";
     if (row.operation === "IB") {
-      result[facility].inboundQty += Number(row.qty);
-      result[facility].inboundCount += 1;
+      result.GWANSAN.inboundQty += Number(row.qty);
+      result.GWANSAN.inboundCount += 1;
     }
     if (row.operation === "OB") {
-      result[facility].outboundQty += Number(row.qty);
-      result[facility].outboundCount += 1;
+      result.GWANSAN.outboundQty += Number(row.qty);
+      result.GWANSAN.outboundCount += 1;
     }
   }
+  result.DAEJA = {
+    inboundQty: Math.max(0, overall.inboundQty - result.GWANSAN.inboundQty),
+    outboundQty: Math.max(0, overall.outboundQty - result.GWANSAN.outboundQty),
+    inboundCount: Math.max(
+      0,
+      overall.inboundCount - result.GWANSAN.inboundCount,
+    ),
+    outboundCount: Math.max(
+      0,
+      overall.outboundCount - result.GWANSAN.outboundCount,
+    ),
+  };
   return result;
 }
 
