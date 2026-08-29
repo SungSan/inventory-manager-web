@@ -1,7 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 520" role="img" aria-labelledby="title">
   <title id="title">SAN WMS symbol</title>
-  <path fill="#171B1F" d="M58 148 256 34l78 45-57 33-21-12-133 77 139 80v149L58 288v-65l147 85v-34L58 189z"/>
-  <path fill="#171B1F" d="m300 189 55 32 55 94V158l58 34v222l-58 34V354l-55-94v156l-55 32z"/>
-  <path fill="#FF5A00" d="m162 88 94-54 107 62v67l-107-62-94 55z"/>
-  <path fill="#FF5A00" d="m190 188 66-38 66 38-37 22v246l-58 34V210z"/>
+  <path fill="#171B1F" d="M77 169 163 120v49l-46 27 108 63v130L77 303v-37l111 64v-38L77 228z"/>
+  <path fill="#171B1F" d="m77 340 148 86v42L77 383z"/>
+  <path fill="#171B1F" d="m314 187 48 27v46l35 62v57l-35-61v92l-48 28z"/>
+  <path fill="#171B1F" d="m406 148 39 22v207l-39 22z"/>
+  <path fill="#FF5A00" d="m163 120 97-54 103 58v47l-103-57-97 55z"/>
+  <path fill="#FF5A00" d="m190 197 71-40 43 24v258l-44 24V212l-23 13z"/>
 </svg>

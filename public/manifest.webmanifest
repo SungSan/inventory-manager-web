@@ -7,7 +7,7 @@
   "background_color": "#171B1F",
   "theme_color": "#171B1F",
   "icons": [
-    { "src": "/san-wms-app-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "/san-wms-app-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "/san-wms-app-icon-192.png?v=491", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/san-wms-app-icon-512.png?v=491", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ]
 }
