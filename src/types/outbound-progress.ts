@@ -19,7 +19,8 @@ export interface OutboundPickingItem {
   requiredQty: number;
   pickedQty: number;
   locations: OutboundLocationHint[];
-  resolution: "MATCHED" | "UNREGISTERED" | "AMBIGUOUS";
+  resolution: "MATCHED" | "UNREGISTERED" | "AMBIGUOUS" | "INSUFFICIENT_STOCK";
+  reviewReason?: string;
 }
 export interface OutboundShipment {
   id: string;
@@ -33,6 +34,8 @@ export interface OutboundJob {
   id: string;
   name: string;
   createdAt: string;
+  archivedAt?: string;
+  archiveReason?: string;
   status: "DRAFT" | "READY" | "IN_PROGRESS" | "COMPLETED";
   shipments: OutboundShipment[];
 }
