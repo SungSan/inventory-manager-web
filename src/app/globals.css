@@ -344,3 +344,44 @@ input[type="checkbox"] { width: 18px; min-height: 18px; padding: 0; }
   .inventory-summary-table .barcode-chip { max-width: 100%; }
   .inventory-summary-table .barcode-chip code { overflow-wrap: anywhere; }
 }
+
+
+/* V5.0.3: 재고조회 고정 열은 최소화하고 남는 폭을 상품명에 배정 */
+.inventory-summary-table { table-layout: fixed; min-width: 1100px; }
+.inventory-summary-table col.inventory-col-category { width: 50px; }
+.inventory-summary-table col.inventory-col-barcode { width: 170px; }
+.inventory-summary-table col.inventory-col-artist { width: 230px; }
+.inventory-summary-table col.inventory-col-name { width: auto; }
+.inventory-summary-table col.inventory-col-pcode { width: 112px; }
+.inventory-summary-table col.inventory-col-code { width: 124px; }
+.inventory-summary-table col.inventory-col-locations { width: 68px; }
+.inventory-summary-table col.inventory-col-stock { width: 78px; }
+.inventory-summary-table col.inventory-col-detail { width: 92px; }
+.inventory-summary-table th,
+.inventory-summary-table td { min-width: 0 !important; padding-left: 5px; padding-right: 5px; }
+.inventory-summary-table th:first-child,
+.inventory-summary-table td:first-child { width: auto; padding-left: 7px; }
+.inventory-summary-table th:last-child,
+.inventory-summary-table td:last-child { width: auto; padding-right: 7px; }
+.inventory-summary-table td:nth-child(2) .barcode-chip-list { gap: 3px; }
+.inventory-summary-table td:nth-child(2) .barcode-chip { gap: 4px; max-width: 100%; padding: 4px 5px; font-size: 12px; }
+.inventory-summary-table td:nth-child(3) { overflow: hidden; text-overflow: ellipsis; }
+.inventory-summary-table td:nth-child(4) { overflow: visible; text-overflow: clip; }
+.inventory-summary-table td:nth-child(5),
+.inventory-summary-table td:nth-child(6) { font-size: 13px; }
+.inventory-summary-table td:nth-child(7),
+.inventory-summary-table td:nth-child(8) { padding-left: 3px; padding-right: 3px; }
+.inventory-summary-table .button-compact { padding-left: 6px; padding-right: 6px; font-size: 11px; }
+
+@media (max-width: 720px) {
+  .inventory-summary-table { min-width: 0; table-layout: auto; }
+  .inventory-summary-table colgroup { display: none; }
+  .inventory-summary-table td:nth-child(4) {
+    white-space: normal;
+    overflow: visible;
+    overflow-wrap: anywhere;
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  .inventory-summary-table td:nth-child(4) strong { display: block; }
+}
