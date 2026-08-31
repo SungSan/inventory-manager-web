@@ -463,3 +463,63 @@ input[type="checkbox"] { width: 18px; min-height: 18px; padding: 0; }
   .inventory-summary-table td:nth-child(9)::before { display: none; }
   .inventory-summary-table td:nth-child(9) .button { display: inline-flex; width: 100%; }
 }
+
+
+/* V5.0.5: 모바일 재고조회는 표 변환 대신 전용 카드 DOM 사용 */
+.inventory-mobile-list { display: none; }
+
+@media (max-width: 720px) {
+  .inventory-desktop-only { display: none !important; }
+  .inventory-mobile-list { display: grid; gap: 10px; }
+  .inventory-mobile-card {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: 0 3px 12px rgba(22, 32, 42, 0.05);
+  }
+  .inventory-mobile-card span {
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 800;
+  }
+  .inventory-mobile-top {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 8px;
+    align-items: start;
+  }
+  .inventory-mobile-barcode,
+  .inventory-mobile-compact,
+  .inventory-mobile-field { display: grid; gap: 4px; min-width: 0; }
+  .inventory-mobile-compact { justify-items: center; }
+  .inventory-mobile-compact strong { font-size: 13px; white-space: nowrap; }
+  .inventory-mobile-barcode .barcode-chip-list { flex-wrap: nowrap; min-width: 0; }
+  .inventory-mobile-barcode .barcode-chip {
+    max-width: 100%;
+    min-width: 0;
+    padding: 4px 6px;
+  }
+  .inventory-mobile-barcode code {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .inventory-mobile-field strong { font-size: 15px; line-height: 1.35; }
+  .inventory-mobile-name strong {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .inventory-mobile-stock {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding-top: 8px;
+    border-top: 1px solid var(--line);
+  }
+  .inventory-mobile-stock strong { font-size: 18px; }
+  .inventory-mobile-card > .button { width: 100%; min-height: 38px; padding: 8px 10px; }
+}
