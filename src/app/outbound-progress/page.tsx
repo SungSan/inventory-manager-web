@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PermissionGuard } from "@/components/permission-guard";
 import { Feedback } from "@/components/feedback";
 import { CameraScanner } from "@/components/camera-scanner";
@@ -8,6 +8,15 @@ import { useUser } from "@/components/user-provider";
 import { listBarcodes, listProducts } from "@/lib/inventory-api";
 import { listAllInventoryRows } from "@/lib/full-data-api";
 import { parseOutboundWorkbooks } from "@/lib/outbound-progress-xlsx";
+import {
+  createOutboundJob,
+  archiveOutboundJob,
+  listOutboundJobs,
+  pickOutboundItem,
+  resolveOutboundItem,
+  setOutboundManualQuantity,
+} from "@/lib/outbound-progress-api";
+import type { Product } from "@/types/domain";
 import type {
   OutboundJob,
   OutboundPickingItem,
@@ -50,53 +59,6 @@ function playTone(kind: "SCAN" | "COMPLETE" | "ERROR") {
   }
 }
 
-function sampleJob(): OutboundJob {
-  const shipment = (
-    trackingNo: string,
-    items: Array<[string, string, string, number, string[]]>,
-  ): OutboundShipment => ({
-    id: uid(),
-    trackingNo,
-    manualQuantityAllowed: false,
-    status: "READY",
-    items: items.map(([barcode, artist, name, qty, locations]) => ({
-      id: uid(),
-      productBarcode: barcode,
-      artist,
-      nameVer: name,
-      orderNos: [`ORDER-${trackingNo}`],
-      requiredQty: qty,
-      pickedQty: 0,
-      resolution: "MATCHED",
-      locations: locations.map((locationCode, index) => ({
-        locationCode,
-        qty: Math.max(qty - index * 2, 1),
-      })),
-    })),
-  });
-  return {
-    id: uid(),
-    name: "파일럿 출고 작업",
-    createdAt: new Date().toISOString(),
-    status: "READY",
-    shipments: [
-      shipment("TEST-880001", [
-        [
-          "880001",
-          "ATEEZ",
-          "GOLDEN HOUR A Ver.",
-          5,
-          ["D1A-01-01-01", "D1C-02-01-01"],
-        ],
-        ["880002", "ATEEZ", "GOLDEN HOUR B Ver.", 3, ["D1A-01-01-02"]],
-      ]),
-      shipment("TEST-880002", [
-        ["880003", "ONF", "미니 9집 POCA Ver.", 10, ["D1B-03-02-01"]],
-      ]),
-    ],
-  };
-}
-
 async function buildJob(
   name: string,
   uploadRows: OutboundUploadRow[],
@@ -136,6 +98,19 @@ async function buildJob(
                 .filter((row) => row.productId === product.id && row.qty > 0)
                 .sort((a, b) => b.qty - a.qty)
             : [];
+          const requiredQty = rows.reduce(
+            (sum, row) => sum + row.requiredQty,
+            0,
+          );
+          const stockQty = locationRows.reduce((sum, row) => sum + row.qty, 0);
+          const resolution =
+            targetIds.length > 1
+              ? "AMBIGUOUS"
+              : !product
+                ? "UNREGISTERED"
+                : stockQty < requiredQty
+                  ? "INSUFFICIENT_STOCK"
+                  : "MATCHED";
           return {
             id: uid(),
             productId: product?.id,
@@ -147,18 +122,21 @@ async function buildJob(
                 ? "공통 바코드 상품 선택 필요"
                 : "미등록 88바코드"),
             orderNos: Array.from(new Set(rows.map((row) => row.orderNo))),
-            requiredQty: rows.reduce((sum, row) => sum + row.requiredQty, 0),
+            requiredQty,
             pickedQty: 0,
             locations: locationRows.map((row) => ({
               locationCode: row.locationCode,
               qty: row.qty,
             })),
-            resolution:
-              targetIds.length > 1
-                ? "AMBIGUOUS"
-                : product
-                  ? "MATCHED"
-                  : "UNREGISTERED",
+            resolution,
+            reviewReason:
+              resolution === "AMBIGUOUS"
+                ? `같은 바코드가 ${targetIds.length}개 상품에 연결되어 있습니다.`
+                : resolution === "UNREGISTERED"
+                  ? "등록된 상품에서 이 88바코드를 찾지 못했습니다."
+                  : resolution === "INSUFFICIENT_STOCK"
+                    ? `재고 부족: 필요 ${requiredQty}개 / 현재 ${stockQty}개`
+                    : undefined,
           };
         },
       );
@@ -189,6 +167,9 @@ function OutboundProgressContent() {
   const isAdmin = user?.role === "admin";
   const canUse = user?.menuAccess?.["outbound-progress"] !== "VIEW";
   const [jobs, setJobs] = useState<OutboundJob[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [reviewSelections, setReviewSelections] = useState<Record<string, string>>({});
+  const [showArchived, setShowArchived] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState("");
   const [activeShipmentId, setActiveShipmentId] = useState("");
   const [scanner, setScanner] = useState("");
@@ -206,6 +187,7 @@ function OutboundProgressContent() {
   } | null>(null);
   const scannerRef = useRef<HTMLInputElement>(null);
   const focusTimer = useRef<number | null>(null);
+  const scanBusyRef = useRef(false);
   const selectedJob = jobs.find((job) => job.id === selectedJobId) ?? null;
   const activeShipment =
     selectedJob?.shipments.find(
@@ -215,6 +197,46 @@ function OutboundProgressContent() {
     if (cameraOpen) return;
     window.setTimeout(() => scannerRef.current?.focus(), 20);
   };
+
+  async function reloadJobs(preferredJobId?: string) {
+    const loaded = await listOutboundJobs(showArchived);
+    setJobs(loaded);
+    const nextId = preferredJobId || selectedJobId || loaded[0]?.id || "";
+    setSelectedJobId(loaded.some((job) => job.id === nextId) ? nextId : loaded[0]?.id || "");
+  }
+
+  useEffect(() => {
+    void listProducts("", false)
+      .then((loadedProducts) => {
+        setProducts(loadedProducts);
+      })
+      .catch((cause) =>
+        setFeedback({
+          kind: "error",
+          title: "출고 작업을 불러오지 못했습니다.",
+          body: cause instanceof Error ? cause.message : "오류",
+        }),
+      );
+  }, []);
+
+  useEffect(() => {
+    void listOutboundJobs(isAdmin && showArchived)
+      .then((loadedJobs) => {
+        setJobs(loadedJobs);
+        setSelectedJobId((current) =>
+          loadedJobs.some((job) => job.id === current)
+            ? current
+            : loadedJobs[0]?.id ?? "",
+        );
+      })
+      .catch((cause) =>
+        setFeedback({
+          kind: "error",
+          title: "출고 작업을 불러오지 못했습니다.",
+          body: cause instanceof Error ? cause.message : "오류",
+        }),
+      );
+  }, [isAdmin, showArchived]);
 
   function showFocus(
     item: OutboundPickingItem,
@@ -270,8 +292,9 @@ function OutboundProgressContent() {
     });
     refocus();
   }
-  function scanItem(raw: string) {
+  async function scanItem(raw: string) {
     if (!activeShipment) return;
+    if (scanBusyRef.current) return;
     const barcode = normalizeBarcode(raw);
     const item = activeShipment.items.find(
       (candidate) => normalizeBarcode(candidate.productBarcode) === barcode,
@@ -291,9 +314,18 @@ function OutboundProgressContent() {
       showFocus(item, "EXCESS", 850);
       return;
     }
-    const nextQty = item.pickedQty + 1;
-    const completed = nextQty === item.requiredQty;
-    const nextItem = { ...item, pickedQty: nextQty };
+    scanBusyRef.current = true;
+    setBusy(true);
+    try {
+      const saved = await pickOutboundItem({
+        itemId: item.id,
+        qty: 1,
+        inputMethod: "SCAN",
+        idempotencyKey: uid(),
+      });
+      const nextQty = saved.pickedQty;
+      const completed = nextQty === item.requiredQty;
+      const nextItem = { ...item, pickedQty: nextQty };
     updateShipment(activeShipment.id, (shipment) => {
       const items = shipment.items.map((candidate) =>
         candidate.id === item.id ? nextItem : candidate,
@@ -308,13 +340,16 @@ function OutboundProgressContent() {
           : "IN_PROGRESS",
       };
     });
-    playTone(completed ? "COMPLETE" : "SCAN");
-    showFocus(
-      nextItem,
-      completed ? "COMPLETE" : "PICKING",
-      completed ? 950 : 0,
-    );
-    refocus();
+      playTone(completed ? "COMPLETE" : "SCAN");
+      showFocus(nextItem, completed ? "COMPLETE" : "PICKING", completed ? 950 : 0);
+      refocus();
+    } catch (cause) {
+      playTone("ERROR");
+      setFeedback({ kind: "error", title: "피킹 저장 실패", body: cause instanceof Error ? cause.message : "오류" });
+    } finally {
+      scanBusyRef.current = false;
+      setBusy(false);
+    }
   }
   function processScan(raw: string) {
     if (!canUse) {
@@ -338,7 +373,7 @@ function OutboundProgressContent() {
       } else startShipment(shipment);
       return;
     }
-    scanItem(value);
+    void scanItem(value);
   }
   function submitScan(event: React.FormEvent) {
     event.preventDefault();
@@ -346,7 +381,7 @@ function OutboundProgressContent() {
     setScanner("");
     processScan(value);
   }
-  function applyManualQuantity() {
+  async function applyManualQuantity() {
     if (!activeShipment || !focus || !activeShipment.manualQuantityAllowed)
       return;
     const add = Number(manualQty);
@@ -359,7 +394,10 @@ function OutboundProgressContent() {
       showFocus(focus.item, "EXCESS", 850);
       return;
     }
-    const nextItem = { ...focus.item, pickedQty: focus.item.pickedQty + add };
+    setBusy(true);
+    try {
+      const saved = await pickOutboundItem({ itemId: focus.item.id, qty: add, inputMethod: "MANUAL", idempotencyKey: uid() });
+      const nextItem = { ...focus.item, pickedQty: saved.pickedQty };
     const completed = nextItem.pickedQty === nextItem.requiredQty;
     updateShipment(activeShipment.id, (shipment) => {
       const items = shipment.items.map((item) =>
@@ -373,14 +411,14 @@ function OutboundProgressContent() {
           : "IN_PROGRESS",
       };
     });
-    setManualQty("");
-    playTone(completed ? "COMPLETE" : "SCAN");
-    showFocus(
-      nextItem,
-      completed ? "COMPLETE" : "PICKING",
-      completed ? 950 : 0,
-    );
-    refocus();
+      setManualQty("");
+      playTone(completed ? "COMPLETE" : "SCAN");
+      showFocus(nextItem, completed ? "COMPLETE" : "PICKING", completed ? 950 : 0);
+      refocus();
+    } catch (cause) {
+      playTone("ERROR");
+      setFeedback({ kind: "error", title: "수량 반영 실패", body: cause instanceof Error ? cause.message : "오류" });
+    } finally { setBusy(false); }
   }
   async function upload() {
     if (!trackingFile || !quantityFile) return;
@@ -392,8 +430,8 @@ function OutboundProgressContent() {
         quantityFile.name.replace(/\.xlsx?$/i, ""),
         rows,
       );
-      setJobs((current) => [job, ...current]);
-      setSelectedJobId(job.id);
+      const savedId = await createOutboundJob(job);
+      await reloadJobs(savedId);
       setCreating(false);
       setTrackingFile(null);
       setQuantityFile(null);
@@ -431,25 +469,23 @@ function OutboundProgressContent() {
     <div className="page-stack">
       <section className="section-heading">
         <div>
-          <p className="eyebrow">OUTBOUND PROGRESS PILOT</p>
+          <p className="eyebrow">OUTBOUND PROGRESS</p>
           <h2>출고 진행</h2>
           <p className="muted">
-            운송장 스캔 후 화면 터치 없이 상품 바코드를 연속 검수하는 독립
-            파일럿입니다.
+            운송장 스캔 후 상품을 검수하고 실제 재고를 차감합니다.
           </p>
         </div>
         <div className={styles.headerActions}>
-            <button
-              className="button button-secondary"
-              disabled={!canUse}
-            onClick={() => {
-              const job = sampleJob();
-              setJobs((current) => [job, ...current]);
-              setSelectedJobId(job.id);
-            }}
-          >
-            샘플 작업 열기
-          </button>
+            {isAdmin ? (
+              <label>
+                <input
+                  type="checkbox"
+                  checked={showArchived}
+                  onChange={(event) => setShowArchived(event.target.checked)}
+                />
+                숨김 작업 보기
+              </label>
+            ) : null}
             <button
               className="button button-primary"
               disabled={!canUse}
@@ -532,14 +568,14 @@ function OutboundProgressContent() {
                   setFocus(null);
                 }}
               >
-                {job.name} · 운송장 {job.shipments.length}건
+                {job.archivedAt ? "[숨김] " : ""}{job.name} · 운송장 {job.shipments.length}건
               </button>
             ))}
           </div>
         </section>
       ) : (
         <section className="panel empty-state">
-          새 출고 작업을 만들거나 샘플 작업을 열어 파일럿 화면을 확인하세요.
+          생성된 출고 작업이 없습니다. 새 출고 작업을 만들어 주세요.
         </section>
       )}
       {selectedJob && counts ? (
@@ -562,6 +598,87 @@ function OutboundProgressContent() {
               <strong>{counts.review}</strong>
             </article>
           </section>
+          {isAdmin ? (
+            <section className="panel">
+              <div className="row-actions">
+                <button
+                  className={selectedJob.archivedAt ? "button button-secondary" : "button button-danger"}
+                  disabled={busy}
+                  onClick={async () => {
+                    const archived = !selectedJob.archivedAt;
+                    const reason = archived ? window.prompt("작업을 숨기는 이유를 입력하세요.", "작업 중단") ?? "" : "";
+                    if (archived && !window.confirm("작업을 목록에서 숨기시겠습니까? 이미 차감된 출고 재고는 그대로 유지됩니다.")) return;
+                    setBusy(true);
+                    try {
+                      await archiveOutboundJob(selectedJob.id, archived, reason);
+                      setActiveShipmentId("");
+                      await reloadJobs();
+                      setFeedback({ kind: "success", title: archived ? "작업을 삭제(숨김)했습니다." : "숨김 작업을 복원했습니다.", body: "이미 처리된 출고 재고와 거래기록은 변경되지 않았습니다." });
+                    } catch (cause) {
+                      setFeedback({ kind: "error", title: "작업 상태 변경 실패", body: cause instanceof Error ? cause.message : "오류" });
+                    } finally { setBusy(false); }
+                  }}
+                >
+                  {selectedJob.archivedAt ? "숨김 작업 복원" : "작업 삭제(숨김)"}
+                </button>
+              </div>
+            </section>
+          ) : null}
+          {counts.review > 0 ? (
+            <section className="panel">
+              <div className="section-heading">
+                <div>
+                  <h3>확인 필요 항목</h3>
+                  <p className="muted">문제 사유를 확인하고 실제 출고할 상품을 연결하세요.</p>
+                </div>
+              </div>
+              <div className={styles.itemList}>
+                {selectedJob.shipments.flatMap((shipment) =>
+                  shipment.items.filter((item) => item.resolution !== "MATCHED").map((item) => (
+                    <article className={styles.item} key={item.id}>
+                      <div>
+                        <strong>{shipment.trackingNo}</strong>
+                        <p className="inline-error">{item.reviewReason || "상품 연결 또는 재고 확인이 필요합니다."}</p>
+                        <code>{item.productBarcode}</code>
+                      </div>
+                      <label>
+                        연결할 상품
+                        <select
+                          value={reviewSelections[item.id] ?? item.productId ?? ""}
+                          onChange={(event) => setReviewSelections((current) => ({ ...current, [item.id]: event.target.value }))}
+                        >
+                          <option value="">상품 선택</option>
+                          {products.map((product) => (
+                            <option key={product.id} value={product.id}>
+                              {product.artist} · {product.nameVer} · {product.codeNo}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <button
+                        className="button button-primary button-compact"
+                        disabled={busy || !(reviewSelections[item.id] ?? item.productId)}
+                        onClick={async () => {
+                          const productId = reviewSelections[item.id] ?? item.productId;
+                          if (!productId) return;
+                          setBusy(true);
+                          try {
+                            await resolveOutboundItem(item.id, productId);
+                            await reloadJobs(selectedJob.id);
+                            setFeedback({ kind: "success", title: "확인 필요 항목을 수정했습니다." });
+                          } catch (cause) {
+                            setFeedback({ kind: "error", title: "항목 수정 실패", body: cause instanceof Error ? cause.message : "오류" });
+                          } finally { setBusy(false); }
+                        }}
+                      >
+                        상품 연결·재검증
+                      </button>
+                    </article>
+                  )),
+                )}
+              </div>
+            </section>
+          ) : null}
           <section className={`panel ${styles.scanPanel}`}>
             <form onSubmit={submitScan} className={styles.scanForm}>
               <label>
@@ -608,12 +725,16 @@ function OutboundProgressContent() {
                 {isAdmin ? (
                   <button
                     className={`button button-compact ${activeShipment.manualQuantityAllowed ? "button-danger" : "button-secondary"}`}
-                    onClick={() =>
-                      updateShipment(activeShipment.id, (shipment) => ({
-                        ...shipment,
-                        manualQuantityAllowed: !shipment.manualQuantityAllowed,
-                      }))
-                    }
+                    onClick={async () => {
+                      const allowed = !activeShipment.manualQuantityAllowed;
+                      setBusy(true);
+                      try {
+                        await setOutboundManualQuantity(activeShipment.id, allowed);
+                        updateShipment(activeShipment.id, (shipment) => ({ ...shipment, manualQuantityAllowed: allowed }));
+                      } catch (cause) {
+                        setFeedback({ kind: "error", title: "설정 저장 실패", body: cause instanceof Error ? cause.message : "오류" });
+                      } finally { setBusy(false); }
+                    }}
                   >
                     직접 수량 입력{" "}
                     {activeShipment.manualQuantityAllowed ? "허용됨" : "차단됨"}
