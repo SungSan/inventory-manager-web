@@ -1,6 +1,6 @@
-import type { ImportInventoryRow } from "@/types/domain";
+import type { ImportInventoryRow, ProductCategory } from "@/types/domain";
 
-export type InventoryCsvLayout = "HEADER" | "LEGACY_7_COLUMNS";
+export type InventoryCsvLayout = "HEADER" | "LEGACY_7_COLUMNS" | "LEGACY_8_COLUMNS";
 
 export interface ParsedInventoryCsv {
   layout: InventoryCsvLayout;
@@ -60,6 +60,14 @@ function parseQty(value: string): number {
   return Number.isFinite(qty) ? qty : -1;
 }
 
+function parseProductCategory(value: string, locationCode: string, rowNumber: number): ProductCategory {
+  const normalized = value.trim().toUpperCase().replace(/[\s_-]+/g, "");
+  if (!normalized) return locationCode.trim().toUpperCase().startsWith("K") ? "MD" : "ALBUM";
+  if (normalized === "MD" || normalized === "굿즈") return "MD";
+  if (normalized === "ALBUM" || normalized === "앨범") return "ALBUM";
+  throw new Error(`${rowNumber}행: 구분은 ALBUM(앨범) 또는 MD만 사용할 수 있습니다.`);
+}
+
 function looksLikeHeader(firstRow: string[]): boolean {
   const headers = new Set(firstRow.map(normalizedHeader));
   const hasLocation = ["LOCATION", "LOCATION_CODE", "로케이션", "위치"].some((name) => headers.has(normalizedHeader(name)));
@@ -84,6 +92,7 @@ export function parseInventoryCsv(text: string): ParsedInventoryCsv {
       const artist = (row[4] ?? "").trim();
       const nameVer = (row[5] ?? "").trim();
       const qty = parseQty(row[6] ?? "");
+      const productCategory = parseProductCategory(row[7] ?? "", locationCode, index + 1);
       return {
         locationCode,
         pCodeNo,
@@ -92,13 +101,14 @@ export function parseInventoryCsv(text: string): ParsedInventoryCsv {
         artist,
         nameVer,
         qty,
+        productCategory,
         // 현재 사용 중인 양식에서는 C열 CODE_NO를 상품 스캔 바코드로 사용합니다.
         productBarcode: codeNo || undefined,
         // 별도 로케이션 바코드 열이 없으므로 A열 로케이션 코드를 그대로 등록합니다.
         locationBarcode: locationCode || undefined,
       } satisfies ImportInventoryRow;
     });
-    return { layout: "LEGACY_7_COLUMNS", rows };
+    return { layout: rawRows.some((row) => row.length >= 8) ? "LEGACY_8_COLUMNS" : "LEGACY_7_COLUMNS", rows };
   }
 
   if (rawRows.length < 2) throw new Error("헤더 아래에 데이터 행이 필요합니다.");
@@ -119,6 +129,11 @@ export function parseInventoryCsv(text: string): ParsedInventoryCsv {
       artist: pick(row, index, ["ARTIST", "아티스트"]),
       nameVer: pick(row, index, ["NAME_VER", "상품명", "상품명_버전", "NAME", "상품명/버전"]),
       qty: parseQty(pick(row, index, ["QTY", "QUANTITY", "TOTAL_QTY", "재고", "수량"])),
+      productCategory: parseProductCategory(
+        pick(row, index, ["PRODUCT_CATEGORY", "CATEGORY", "구분", "상품구분"]),
+        locationCode,
+        i + 1,
+      ),
       productBarcode: explicitProductBarcode || codeNo || undefined,
       locationBarcode: explicitLocationBarcode || locationCode || undefined,
     });
