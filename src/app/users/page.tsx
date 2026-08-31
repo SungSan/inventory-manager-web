@@ -22,6 +22,8 @@ import {
   type AdminUserSecurityStatus,
 } from "@/lib/identity-api";
 import { roleLabels } from "@/lib/permissions";
+import { adminIssueClientControl, type ClientControlAction } from "@/lib/client-control-api";
+import { getSupabaseClient } from "@/lib/supabase";
 import type { UserRole } from "@/types/domain";
 import type { MenuAccessLevel, ProductScope } from "@/types/domain";
 import {
@@ -313,6 +315,25 @@ function UsersContent() {
     }
   }
 
+  async function issueClientControl(action: ClientControlAction) {
+    const label = action === "RELOAD" ? "전체 강제 새로고침" : "전체 로그아웃";
+    if (!window.confirm(`${label}을 실행할까요? 현재 SAN WMS를 열어 둔 모든 사용자에게 적용됩니다.`)) return;
+    setBusyId(`CONTROL_${action}`);
+    try {
+      await adminIssueClientControl(action);
+      if (action === "SIGN_OUT") {
+        await getSupabaseClient()?.auth.signOut({ scope: "local" });
+        window.location.assign("/");
+        return;
+      }
+      window.location.reload();
+    } catch (cause) {
+      setFeedback({ kind: "error", title: "명령 전송 실패", body: cause instanceof Error ? cause.message : "오류" });
+    } finally {
+      setBusyId("");
+    }
+  }
+
   return (
     <div className="page-stack">
       <section className="section-heading">
@@ -326,6 +347,12 @@ function UsersContent() {
           </p>
         </div>
         <div className="row-actions">
+          <button className="button button-secondary" onClick={() => void issueClientControl("RELOAD")} disabled={Boolean(busyId)}>
+            전체 강제 새로고침
+          </button>
+          <button className="button button-danger" onClick={() => void issueClientControl("SIGN_OUT")} disabled={Boolean(busyId)}>
+            전체 로그아웃
+          </button>
           <label className="checkbox-label">
             <input
               type="checkbox"
@@ -421,6 +448,10 @@ function UsersContent() {
                       <strong>{formatDateTime(user.lastSignInAt)}</strong>
                       <br />
                       <small className="muted">Supabase 인증 성공 기준</small>
+                      <br />
+                      <strong>{user.lastAccessIp || "IP 기록 없음"}</strong>
+                      <br />
+                      <small className="muted">앱 접속 {formatDateTime(user.lastAccessAt)}</small>
                     </td>
                     <td>
                       <select

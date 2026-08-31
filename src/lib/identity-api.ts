@@ -81,6 +81,8 @@ export interface AdminUserSecurityStatus {
   latestTermsAcceptedAt?: string;
   termsAcceptanceRequired: boolean;
   lastSignInAt?: string;
+  lastAccessIp?: string;
+  lastAccessAt?: string;
   disabledAt?: string;
   disableReason?: string;
   deletedAt?: string;
@@ -274,6 +276,8 @@ export async function listAdminUserSecurityStatus(): Promise<AdminUserSecuritySt
       latestTermsAcceptedAt: optionalText(row.latest_terms_accepted_at),
       termsAcceptanceRequired: Boolean(row.terms_acceptance_required),
       lastSignInAt: optionalText(row.last_sign_in_at),
+      lastAccessIp: optionalText(row.last_access_ip),
+      lastAccessAt: optionalText(row.last_access_at),
       disabledAt: optionalText(row.disabled_at),
       disableReason: optionalText(row.disable_reason),
       deletedAt: optionalText(row.deleted_at),
