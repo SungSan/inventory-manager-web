@@ -444,7 +444,7 @@ function InventoryContent() {
         </article>
       </section>
 
-      <section className="panel inventory-summary-panel">
+      <section className="panel inventory-summary-panel inventory-desktop-only">
         <div className="table-wrap inventory-summary-wrap">
           <table className="inventory-summary-table">
             <colgroup>
@@ -524,6 +524,55 @@ function InventoryContent() {
             </tbody>
           </table>
         </div>
+        {summaries.length === 0 ? (
+          <p className="empty-state">검색 결과가 없습니다.</p>
+        ) : null}
+      </section>
+
+      <section className="inventory-mobile-list" aria-label="모바일 재고 목록">
+        {summaries.map((item) => (
+          <article className="inventory-mobile-card" key={`mobile-${item.groupKey}`}>
+            <div className="inventory-mobile-top">
+              <div className="inventory-mobile-barcode">
+                <span>상품 바코드</span>
+                <div className="barcode-chip-list">
+                  <span className="barcode-chip">
+                    <code>{item.displayBarcode}</code>
+                    {(sharedBarcodeCount.get(item.displayBarcodeNormalized) ?? 0) > 1 ? (
+                      <small>공통 바코드</small>
+                    ) : null}
+                  </span>
+                </div>
+              </div>
+              <div className="inventory-mobile-compact">
+                <span>구분</span>
+                <strong>{productCategoryLabel[item.productCategory]}</strong>
+              </div>
+              <div className="inventory-mobile-compact">
+                <span>로케이션 수</span>
+                <strong>{item.locationRows.length}</strong>
+              </div>
+            </div>
+            <div className="inventory-mobile-field">
+              <span>아티스트</span>
+              <strong>{formatValueList(item.artists)}</strong>
+            </div>
+            <div className="inventory-mobile-field inventory-mobile-name">
+              <span>상품명/버전</span>
+              <strong>{item.nameVer || "(상품명/버전 없음)"}</strong>
+            </div>
+            <div className="inventory-mobile-stock">
+              <span>총재고</span>
+              <strong>{item.totalQty.toLocaleString()}</strong>
+            </div>
+            <button
+              className="button button-secondary"
+              onClick={() => setSelected(item)}
+            >
+              재고 상세보기
+            </button>
+          </article>
+        ))}
         {summaries.length === 0 ? (
           <p className="empty-state">검색 결과가 없습니다.</p>
         ) : null}
