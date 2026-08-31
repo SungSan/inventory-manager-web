@@ -3,18 +3,19 @@
 import { useState } from "react";
 import { Feedback, type FeedbackKind } from "@/components/feedback";
 import { PermissionGuard } from "@/components/permission-guard";
-import { parseInventoryCsv, type InventoryCsvLayout } from "@/lib/csv";
+import { downloadCsv, parseInventoryCsv, type InventoryCsvLayout } from "@/lib/csv";
 import { downloadDemoBackup, importInventoryRows, resetDemo } from "@/lib/inventory-api";
 import { isDemoMode } from "@/lib/supabase";
 import type { ImportInventoryRow, ImportResult } from "@/types/domain";
 
-const sample = `D1A-01-02-03,P-10003,8801234567800,,IVE,3RD EP / VER.A,12`;
+const sample = `D1A-01-02-03,P-10003,8801234567800,,IVE,3RD EP / VER.A,12,ALBUM`;
 
 type CsvEncodingMode = "auto" | "utf-8" | "euc-kr";
 type DetectedCsvEncoding = "UTF-8" | "CP949/EUC-KR";
 
 function layoutLabel(layout: InventoryCsvLayout | null): string {
-  if (layout === "LEGACY_7_COLUMNS") return "헤더 없는 기존 A~G 양식";
+  if (layout === "LEGACY_8_COLUMNS") return "헤더 없는 A~H 8열 양식";
+  if (layout === "LEGACY_7_COLUMNS") return "헤더 없는 기존 A~G 7열 양식";
   if (layout === "HEADER") return "헤더 포함 CSV 양식";
   return "미분석";
 }
@@ -141,20 +142,20 @@ function ImportContent() {
         <p className="eyebrow">MIGRATION</p>
         <h2>Google Sheets 데이터 이전</h2>
         <p className="muted">
-          현재 사용 중인 헤더 없는 A~G 양식을 그대로 지원합니다. C열 CODE_NO는 상품 바코드로,
+          A~H 8열 양식을 권장하며 기존 A~G 7열도 지원합니다. C열 CODE_NO는 상품 바코드로,
           A열 LOCATION은 로케이션 바코드로 자동 등록됩니다.
         </p>
       </section>
 
       <section className="panel">
-        <h3>현재 사용 중인 7열 양식</h3>
+        <div className="section-heading"><h3>권장 8열 양식</h3><button className="button button-secondary button-compact" onClick={() => downloadCsv("SAN-WMS-데이터이전-양식.csv", ["LOCATION","P_CODE_NO","CODE_NO/상품바코드","MASTER_CODE_NO","ARTIST","상품명/버전","QTY","구분"], [["D1A-01-02-03","P-10003","8801234567800","","IVE","3RD EP / VER.A",12,"ALBUM"],["K1A-01-01-01","MD-10001","8809999999999","","ARTIST","OFFICIAL MD",5,"MD"]])}>8열 시트 양식 다운로드</button></div>
         <div className="table-wrap">
           <table>
-            <thead><tr><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th><th>F</th><th>G</th></tr></thead>
-            <tbody><tr><td>LOCATION</td><td>P_CODE_NO</td><td>CODE_NO/상품바코드</td><td>MASTER_CODE_NO</td><td>ARTIST</td><td>상품명/버전</td><td>QTY</td></tr></tbody>
+            <thead><tr><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th><th>F</th><th>G</th><th>H</th></tr></thead>
+            <tbody><tr><td>LOCATION</td><td>P_CODE_NO</td><td>CODE_NO/상품바코드</td><td>MASTER_CODE_NO</td><td>ARTIST</td><td>상품명/버전</td><td>QTY</td><td>구분</td></tr></tbody>
           </table>
         </div>
-        <p className="muted small">헤더가 있어도 되고 없어도 됩니다. 같은 CODE_NO가 여러 상품명/버전에 연결되어 있으면 각각 별도 상품으로 유지됩니다.</p>
+        <p className="muted small">H열 구분은 ALBUM(앨범) 또는 MD를 입력합니다. 비어 있으면 K로 시작하는 LOC는 MD, 그 외는 ALBUM으로 추론합니다. 기존 7열 파일도 계속 지원합니다.</p>
       </section>
 
       <section className="panel form-stack">
@@ -238,11 +239,11 @@ function ImportContent() {
           </div>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>LOCATION</th><th>P_CODE</th><th>CODE_NO</th><th>ARTIST</th><th>상품명/버전</th><th>QTY</th><th>상품바코드</th></tr></thead>
+              <thead><tr><th>LOCATION</th><th>구분</th><th>P_CODE</th><th>CODE_NO</th><th>ARTIST</th><th>상품명/버전</th><th>QTY</th><th>상품바코드</th></tr></thead>
               <tbody>
                 {rows.slice(0, 100).map((row, index) => (
                   <tr key={`${row.locationCode}-${row.codeNo}-${row.nameVer}-${index}`}>
-                    <td>{row.locationCode}</td><td>{row.pCodeNo}</td><td>{row.codeNo}</td><td>{row.artist}</td>
+                    <td>{row.locationCode}</td><td>{row.productCategory === "MD" ? "MD" : "앨범"}</td><td>{row.pCodeNo}</td><td>{row.codeNo}</td><td>{row.artist}</td>
                     <td>{row.nameVer || <span className="inline-error">비어 있음</span>}</td><td>{row.qty}</td><td><code>{row.productBarcode}</code></td>
                   </tr>
                 ))}

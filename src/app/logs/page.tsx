@@ -6,11 +6,11 @@ import { PermissionGuard } from "@/components/permission-guard";
 import { useUser } from "@/components/user-provider";
 import { hasPermission } from "@/lib/permissions";
 import { listOutboundJobs } from "@/lib/outbound-progress-api";
-import { listAuditLogs, listScanEvents, listTransactions, reverseTransaction, subscribeToInventory, type LogQueryOptions } from "@/lib/inventory-api";
-import type { AuditLog, InventoryTransaction, ScanEvent } from "@/types/domain";
+import { listAuditLogs, listTransactions, reverseTransaction, subscribeToInventory, type LogQueryOptions } from "@/lib/inventory-api";
+import type { AuditLog, InventoryTransaction } from "@/types/domain";
 import type { OutboundJob } from "@/types/outbound-progress";
 
-type Tab = "transactions" | "outbound" | "transfers" | "scans" | "audit";
+type Tab = "transactions" | "outbound" | "transfers" | "audit";
 type DateMode = "ALL" | "DAY" | "RANGE";
 
 function todayInKorea(): string {
@@ -100,12 +100,10 @@ function LogsContent() {
   const [tab, setTab] = useState<Tab>("transactions");
   const [search, setSearch] = useState("");
   const [operation, setOperation] = useState("ALL");
-  const [scanResult, setScanResult] = useState("ALL");
   const [dateMode, setDateMode] = useState<DateMode>("ALL");
   const [startDate, setStartDate] = useState(todayInKorea);
   const [endDate, setEndDate] = useState(todayInKorea);
   const [transactions, setTransactions] = useState<InventoryTransaction[]>([]);
-  const [scans, setScans] = useState<ScanEvent[]>([]);
   const [audits, setAudits] = useState<AuditLog[]>([]);
   const [outboundJobs, setOutboundJobs] = useState<OutboundJob[]>([]);
   const [feedback, setFeedback] = useState<{ kind: FeedbackKind; title: string; body?: string } | null>(null);
@@ -133,9 +131,8 @@ function LogsContent() {
     if (tab === "outbound") setOutboundJobs(await listOutboundJobs(true));
     if (tab === "transactions") setTransactions(await listTransactions(search, operation, 500, "INOUT", dateOptions));
     if (tab === "transfers") setTransactions(await listTransactions(search, operation, 500, "TRANSFER", dateOptions));
-    if (tab === "scans") setScans(await listScanEvents(search, scanResult, 1000, dateOptions));
     if (tab === "audit") setAudits(await listAuditLogs(search, 1000, dateOptions));
-  }, [dateOptions, invalidRange, operation, scanResult, search, tab]);
+  }, [dateOptions, invalidRange, operation, search, tab]);
 
   useEffect(() => { const timer = window.setTimeout(() => void load(), 150); return () => window.clearTimeout(timer); }, [load]);
   useEffect(() => subscribeToInventory(load, { scope: "logs", fallbackMs: 120_000 }), [load]);
@@ -153,18 +150,16 @@ function LogsContent() {
   }
 
   return <div className="page-stack">
-    <section><p className="eyebrow">TRACEABILITY</p><h2>작업 로그</h2><p className="muted">입출고, 내부 재고이관, 스캔, 감사 로그를 분리하고 원하는 날짜 또는 기간으로 조회합니다.</p></section>
+    <section><p className="eyebrow">TRACEABILITY</p><h2>작업 로그</h2><p className="muted">입출고·출고작업·내부 재고이관 이력과 관리자 감사 기록을 분리하고 원하는 날짜 또는 기간으로 조회합니다.</p></section>
     <section className="tab-row log-tab-row">
       <button className={tab === "transactions" ? "active" : ""} onClick={() => setTab("transactions")}>입출고 이력</button>
       <button className={tab === "outbound" ? "active" : ""} onClick={() => setTab("outbound")}>출고작업 이력</button>
       <button className={tab === "transfers" ? "active" : ""} onClick={() => setTab("transfers")}>재고이관 이력</button>
-      <button className={tab === "scans" ? "active" : ""} onClick={() => setTab("scans")}>스캔 로그</button>
-      {canViewAudit ? <button className={tab === "audit" ? "active" : ""} onClick={() => setTab("audit")}>감사 로그</button> : null}
+      {canViewAudit ? <button className={tab === "audit" ? "active" : ""} onClick={() => setTab("audit")}>관리자 감사 로그</button> : null}
     </section>
     <section className="panel filter-row">
       <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="상품, 로케이션, 작업자, 메모 검색" />
       {transactionTab ? <select value={operation} onChange={(event) => setOperation(event.target.value)}><option value="ALL">IB/OB 전체</option><option value="IB">IB</option><option value="OB">OB</option></select> : null}
-      {tab === "scans" ? <select value={scanResult} onChange={(event) => setScanResult(event.target.value)}><option value="ALL">결과 전체</option><option value="SUCCESS">성공</option><option value="NOT_FOUND">미등록</option><option value="WRONG_TYPE">유형 불일치</option><option value="ERROR">오류</option></select> : null}
       <select value={dateMode} onChange={(event) => setDateMode(event.target.value as DateMode)} aria-label="날짜 조회 방식"><option value="ALL">전체 기간</option><option value="DAY">하루 선택</option><option value="RANGE">기간 선택</option></select>
       {dateMode !== "ALL" ? <label className="log-date-field"><span>{dateMode === "DAY" ? "조회일" : "시작일"}</span><input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label> : null}
       {dateMode === "RANGE" ? <label className="log-date-field"><span>종료일</span><input type="date" min={startDate} value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label> : null}
@@ -174,7 +169,6 @@ function LogsContent() {
 
     {tab === "outbound" && !invalidRange ? <OutboundJobTable jobs={visibleOutboundJobs} /> : null}
     {transactionTab && !invalidRange ? <TransactionTable rows={transactions} emptyText={tab === "transfers" ? "재고이관 이력이 없습니다." : "입출고 이력이 없습니다."} user={user} onReverse={(tx) => void reverse(tx)} /> : null}
-    {tab === "scans" && !invalidRange ? <section className="panel"><div className="table-wrap"><table><thead><tr><th>시간</th><th>결과</th><th>스캔값</th><th>예상 유형</th><th>확인 유형</th><th>대상</th><th>화면</th><th>작업자</th></tr></thead><tbody>{scans.map((event) => <tr key={event.id}><td>{new Date(event.createdAt).toLocaleString("ko-KR")}</td><td><span className={`status-badge ${event.result.toLowerCase()}`}>{event.result}</span></td><td><code>{event.rawValue}</code></td><td>{event.expectedTargetType}</td><td>{event.resolvedTargetType}</td><td>{event.targetLabel}</td><td>{event.context}</td><td>{event.actorLabel}</td></tr>)}</tbody></table></div>{scans.length === 0 ? <p className="empty-state">스캔 기록이 없습니다.</p> : null}</section> : null}
     {tab === "audit" && !invalidRange ? <section className="panel"><div className="table-wrap"><table><thead><tr><th>시간</th><th>작업</th><th>대상 유형</th><th>대상</th><th>작업자</th><th>메모</th><th>변경 전</th><th>변경 후</th></tr></thead><tbody>{audits.map((log) => <tr key={log.id}><td>{new Date(log.createdAt).toLocaleString("ko-KR")}</td><td><code>{log.action}</code></td><td>{log.entityType}</td><td>{log.entityLabel}</td><td>{log.actorLabel}</td><td>{log.note}</td><td><pre className="json-cell">{log.before ? JSON.stringify(log.before, null, 1) : ""}</pre></td><td><pre className="json-cell">{log.after ? JSON.stringify(log.after, null, 1) : ""}</pre></td></tr>)}</tbody></table></div>{audits.length === 0 ? <p className="empty-state">감사 기록이 없습니다.</p> : null}</section> : null}
   </div>;
 }

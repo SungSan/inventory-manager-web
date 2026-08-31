@@ -855,6 +855,7 @@ export async function demoImportInventoryRows(rows: ImportInventoryRow[]): Promi
       artist: sourceRow.artist.trim(),
       nameVer: sourceRow.nameVer.trim(),
       qty: sourceRow.qty,
+      productCategory: sourceRow.productCategory ?? (sourceRow.locationCode.trim().toUpperCase().startsWith("K") ? "MD" : "ALBUM"),
       productBarcode: (sourceRow.productBarcode || sourceRow.codeNo).trim(),
       locationBarcode: (sourceRow.locationBarcode || sourceRow.locationCode).trim().toUpperCase(),
     };
@@ -904,6 +905,7 @@ export async function demoImportInventoryRows(rows: ImportInventoryRow[]): Promi
         masterCodeNo: row.masterCodeNo,
         artist: row.artist,
         nameVer: row.nameVer,
+        productCategory: row.productCategory,
         active: true,
         createdAt: timestamp,
         updatedAt: timestamp,
