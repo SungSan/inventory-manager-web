@@ -447,6 +447,17 @@ function InventoryContent() {
       <section className="panel inventory-summary-panel">
         <div className="table-wrap inventory-summary-wrap">
           <table className="inventory-summary-table">
+            <colgroup>
+              <col className="inventory-col-category" />
+              <col className="inventory-col-barcode" />
+              <col className="inventory-col-artist" />
+              <col className="inventory-col-name" />
+              <col className="inventory-col-pcode" />
+              <col className="inventory-col-code" />
+              <col className="inventory-col-locations" />
+              <col className="inventory-col-stock" />
+              <col className="inventory-col-detail" />
+            </colgroup>
             <thead>
               <tr>
                 <th>구분</th>
