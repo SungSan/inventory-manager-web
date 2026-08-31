@@ -15,13 +15,14 @@ import { useUser } from "@/components/user-provider";
 import { APP_VERSION_LABEL } from "@/lib/app-version";
 import { hasPermission, roleLabels, type Permission } from "@/lib/permissions";
 import { desktopActivityStorageKey } from "@/lib/session-guard-api";
+import { recordMySessionIp, subscribeToClientControl } from "@/lib/client-control-api";
 import { isDemoMode, getSupabaseClient } from "@/lib/supabase";
 import { listUsers, subscribeToInventory } from "@/lib/inventory-api";
 import type { UserProfile } from "@/types/domain";
 import styles from "./app-shell.module.css";
 
 type NavItem = { key: string; href: string; label: string; permission?: Permission; benefitFeature?: boolean };
-type PresenceUser = { userId: string; displayName: string; pageLabel: string; path: string; onlineAt: number; lastActiveAt: number };
+type PresenceUser = { userId: string; displayName: string; pageLabel: string; path: string; onlineAt: number; lastActiveAt: number; ipAddress?: string };
 type PresenceDisplay = PresenceUser & { disconnectedAt?: number };
 
 const AWAY_AFTER_MS = 10 * 60 * 1000;
@@ -61,8 +62,9 @@ function isRouteActive(pathname: string, href: string): boolean {
   return pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
 }
 
-function OnlinePresenceTicker({ user, pathname, pageLabel }: { user: UserProfile | null; pathname: string; pageLabel: string }) {
+function OnlinePresenceTicker({ user, pathname, pageLabel, canViewIp }: { user: UserProfile | null; pathname: string; pageLabel: string; canViewIp: boolean }) {
   const [presenceUsers, setPresenceUsers] = useState<PresenceDisplay[]>([]);
+  const [ipAddress, setIpAddress] = useState("");
   const [clock, setClock] = useState(Date.now());
   const channelRef = useRef<RealtimeChannel | null>(null);
   const lastActiveAtRef = useRef(Date.now());
@@ -79,7 +81,15 @@ function OnlinePresenceTicker({ user, pathname, pageLabel }: { user: UserProfile
       path: currentMetaRef.current.pathname,
       onlineAt: Date.now(),
       lastActiveAt: lastActiveAtRef.current,
+      ipAddress,
     };
+  }, [ipAddress, user]);
+
+  useEffect(() => {
+    if (!user || isDemoMode()) return;
+    let active = true;
+    void recordMySessionIp().then((value) => { if (active) setIpAddress(value); }).catch(() => undefined);
+    return () => { active = false; };
   }, [user]);
 
   useEffect(() => {
@@ -172,7 +182,7 @@ function OnlinePresenceTicker({ user, pathname, pageLabel }: { user: UserProfile
           const status = statusOf(item);
           return <div className={styles.presenceItem} key={item.userId}>
             <span className={`${styles.presenceDot} ${styles[`presenceDot${status}`]}`} aria-hidden="true" />
-            <div className={styles.presenceIdentity}><strong>{item.displayName}</strong><small>{statusLabel[status]}</small></div>
+            <div className={styles.presenceIdentity}><strong>{item.displayName}</strong><small>{statusLabel[status]}{canViewIp && item.ipAddress ? ` · ${item.ipAddress}` : ""}</small></div>
             <span>{item.pageLabel}</span>
           </div>;
         }) : <p className={styles.presenceEmpty}>접속자가 없습니다.</p>}
@@ -190,6 +200,20 @@ function ShellContent({ children }: { children: React.ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerPinned, setDrawerPinned] = useState(false);
   const hoverCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!user || isDemoMode()) return;
+    return subscribeToClientControl((state) => {
+      const key = "san-wms-client-control-processed";
+      if (!state.id || sessionStorage.getItem(key) === state.id) return;
+      sessionStorage.setItem(key, state.id);
+      if (state.action === "SIGN_OUT") {
+        localStorage.removeItem(desktopActivityStorageKey(user.id));
+        void getSupabaseClient()?.auth.signOut({ scope: "local" }).finally(() => window.location.assign("/"));
+      } else {
+        window.location.reload();
+      }
+    });
+  }, [user]);
 
   function cancelHoverClose() {
     if (hoverCloseTimer.current !== null) {
@@ -422,7 +446,7 @@ function ShellContent({ children }: { children: React.ReactNode }) {
             <h1>재고관리</h1>
           </div>
           <div className={styles.workspaceActions}>
-            <OnlinePresenceTicker user={user} pathname={pathname} pageLabel={currentNav?.label ?? "알 수 없는 화면"} />
+            <OnlinePresenceTicker user={user} pathname={pathname} pageLabel={currentNav?.label ?? "알 수 없는 화면"} canViewIp={Boolean(user && hasPermission(user.role, "manage_users"))} />
             <WorkRequestIndicator />
           </div>
         </header>
