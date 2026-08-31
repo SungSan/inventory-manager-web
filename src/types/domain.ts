@@ -203,6 +203,7 @@ export interface ImportInventoryRow {
   artist: string;
   nameVer: string;
   qty: number;
+  productCategory?: ProductCategory;
   productBarcode?: string;
   locationBarcode?: string;
 }
