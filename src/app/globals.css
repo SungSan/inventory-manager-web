@@ -385,3 +385,72 @@ input[type="checkbox"] { width: 18px; min-height: 18px; padding: 0; }
   }
   .inventory-summary-table td:nth-child(4) strong { display: block; }
 }
+
+
+/* V5.0.4: 재고조회 데스크톱 열 비율 및 모바일 카드 순서 확정 */
+@media (min-width: 721px) {
+  .inventory-summary-table { width: 100%; min-width: 1050px; table-layout: fixed; }
+  .inventory-summary-table col.inventory-col-category { width: 3%; }
+  .inventory-summary-table col.inventory-col-barcode { width: 12%; }
+  .inventory-summary-table col.inventory-col-artist { width: 15%; }
+  .inventory-summary-table col.inventory-col-name { width: 38%; }
+  .inventory-summary-table col.inventory-col-pcode { width: 8%; }
+  .inventory-summary-table col.inventory-col-code { width: 9%; }
+  .inventory-summary-table col.inventory-col-locations { width: 5%; }
+  .inventory-summary-table col.inventory-col-stock { width: 4%; }
+  .inventory-summary-table col.inventory-col-detail { width: 6%; }
+  .inventory-summary-table th,
+  .inventory-summary-table td { padding-left: 4px; padding-right: 4px; }
+  .inventory-summary-table td:nth-child(4) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+
+@media (max-width: 720px) {
+  .inventory-summary-table tr {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+  .inventory-summary-table td:nth-child(2) {
+    display: grid;
+    grid-column: 1 !important;
+    order: -10;
+  }
+  .inventory-summary-table td:nth-child(1) {
+    display: grid;
+    grid-column: 2 !important;
+    order: -10;
+  }
+  .inventory-summary-table td:nth-child(7) {
+    display: grid;
+    grid-column: 3 !important;
+    order: -10;
+    text-align: center !important;
+  }
+  .inventory-summary-table td:nth-child(3) {
+    display: grid;
+    grid-column: 1 / -1 !important;
+    order: -9;
+  }
+  .inventory-summary-table td:nth-child(4) {
+    display: grid;
+    grid-column: 1 / -1 !important;
+    order: -8;
+    white-space: normal;
+    overflow: visible;
+    overflow-wrap: anywhere;
+  }
+  .inventory-summary-table td:nth-child(9) {
+    display: grid;
+    grid-column: 1 / -1 !important;
+    order: -7;
+    border-bottom: 0;
+  }
+  .inventory-summary-table td:nth-child(5),
+  .inventory-summary-table td:nth-child(6),
+  .inventory-summary-table td:nth-child(8) { display: none; }
+  .inventory-summary-table td:nth-child(2)::before { content: "상품 바코드"; }
+  .inventory-summary-table td:nth-child(1)::before { content: "구분"; }
+  .inventory-summary-table td:nth-child(7)::before { content: "로케이션 수"; }
+  .inventory-summary-table td:nth-child(3)::before { content: "아티스트"; }
+  .inventory-summary-table td:nth-child(4)::before { content: "상품명/버전"; }
+  .inventory-summary-table td:nth-child(9)::before { display: none; }
+  .inventory-summary-table td:nth-child(9) .button { display: inline-flex; width: 100%; }
+}
