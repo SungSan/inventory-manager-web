@@ -114,15 +114,19 @@ export async function setOutboundManualQuantity(
 
 export async function pickOutboundItem(input: {
   itemId: string;
+  locationBarcode: string;
   qty: number;
   inputMethod: "SCAN" | "MANUAL";
   idempotencyKey: string;
+  selectedProductId?: string;
 }): Promise<{ pickedQty: number; shipmentStatus: string }> {
-  const { data, error } = await client().rpc("pick_outbound_item", {
+  const { data, error } = await client().rpc("pick_outbound_item_v2", {
     p_item_id: input.itemId,
+    p_location_barcode: input.locationBarcode,
     p_qty: input.qty,
     p_input_method: input.inputMethod,
     p_idempotency_key: input.idempotencyKey,
+    p_selected_product_id: input.selectedProductId ?? null,
   });
   if (error) throw setupError(error.message);
   const value = (data ?? {}) as Row;
@@ -130,4 +134,43 @@ export async function pickOutboundItem(input: {
     pickedQty: Number(value.picked_qty),
     shipmentStatus: String(value.shipment_status ?? "IN_PROGRESS"),
   };
+}
+
+export interface OutboundPickLocation {
+  id: string;
+  locationCode: string;
+  scannedBarcode: string;
+}
+
+export interface OutboundPickCandidate {
+  productId: string;
+  artist: string;
+  nameVer: string;
+  codeNo: string;
+  qty: number;
+}
+
+export async function resolveOutboundLocation(barcode: string): Promise<OutboundPickLocation> {
+  const { data, error } = await client().rpc("resolve_outbound_location", { p_barcode: barcode });
+  if (error) throw setupError(error.message);
+  const row = (data ?? {}) as Row;
+  return { id: String(row.id), locationCode: String(row.location_code), scannedBarcode: barcode };
+}
+
+export async function getOutboundPickCandidates(
+  itemId: string,
+  locationBarcode: string,
+): Promise<OutboundPickCandidate[]> {
+  const { data, error } = await client().rpc("get_outbound_pick_candidates", {
+    p_item_id: itemId,
+    p_location_barcode: locationBarcode,
+  });
+  if (error) throw setupError(error.message);
+  return rows(data).map((row) => ({
+    productId: String(row.product_id),
+    artist: String(row.artist ?? ""),
+    nameVer: String(row.name_ver ?? ""),
+    codeNo: String(row.code_no ?? ""),
+    qty: Number(row.qty),
+  }));
 }
