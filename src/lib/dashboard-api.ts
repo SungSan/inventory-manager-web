@@ -30,6 +30,27 @@ const emptyFacilityMetrics = (): FacilityDashboardMetrics => ({
 });
 
 export async function getFacilityDashboardMetrics(): Promise<FacilityDashboardMetrics> {
+  if (!isDemoMode()) {
+    const supabase = getSupabaseClient();
+    if (!supabase) throw new Error("Supabase 연결 설정을 확인하세요.");
+    const { data, error } = await supabase.rpc("get_facility_dashboard_metrics_fast");
+    if (!error && data && typeof data === "object") {
+      const source = data as Record<string, Record<string, unknown>>;
+      const result = emptyFacilityMetrics();
+      for (const facility of ["DAEJA", "GWANSAN", "UNASSIGNED"] as Facility[]) {
+        const row = source[facility] ?? {};
+        result[facility] = {
+          totalQty: Number(row.total_qty ?? 0),
+          skuCount: Number(row.sku_count ?? 0),
+          locationCount: Number(row.location_count ?? 0),
+          lowStock: Number(row.low_stock ?? 0),
+        };
+      }
+      return result;
+    }
+    const missing = error?.code === "PGRST202" || String(error?.message ?? "").includes("get_facility_dashboard_metrics_fast");
+    if (!missing && error) throw new Error(error.message);
+  }
   const [inventory, locations] = await Promise.all([
     listInventory(),
     listLocations("", false),
