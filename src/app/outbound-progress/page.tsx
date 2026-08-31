@@ -13,8 +13,12 @@ import {
   archiveOutboundJob,
   listOutboundJobs,
   pickOutboundItem,
+  getOutboundPickCandidates,
+  resolveOutboundLocation,
   resolveOutboundItem,
   setOutboundManualQuantity,
+  type OutboundPickCandidate,
+  type OutboundPickLocation,
 } from "@/lib/outbound-progress-api";
 import type { Product } from "@/types/domain";
 import type {
@@ -28,6 +32,12 @@ import styles from "./outbound-progress.module.css";
 type FocusState = {
   item: OutboundPickingItem;
   kind: "PICKING" | "COMPLETE" | "EXCESS";
+} | null;
+type PendingProductChoice = {
+  item: OutboundPickingItem;
+  candidates: OutboundPickCandidate[];
+  qty: number;
+  inputMethod: "SCAN" | "MANUAL";
 } | null;
 const normalizeBarcode = (value: string) =>
   value.trim().replace(/\s+/g, "").toUpperCase();
@@ -91,22 +101,29 @@ async function buildJob(
       const items: OutboundPickingItem[] = [...itemGroups.entries()].map(
         ([barcode, rows]) => {
           const targetIds = barcodeTargets.get(barcode) ?? [];
-          const product =
-            targetIds.length === 1 ? productsById.get(targetIds[0]) : undefined;
-          const locationRows = product
-            ? inventory
-                .filter((row) => row.productId === product.id && row.qty > 0)
-                .sort((a, b) => b.qty - a.qty)
-            : [];
+          const candidateProducts = targetIds
+            .map((id) => productsById.get(id))
+            .filter((value): value is Product => Boolean(value));
+          const product = candidateProducts.length === 1 ? candidateProducts[0] : undefined;
+          const locationTotals = new Map<string, number>();
+          for (const row of inventory.filter(
+            (entry) => targetIds.includes(entry.productId) && entry.qty > 0,
+          )) {
+            locationTotals.set(
+              row.locationCode,
+              (locationTotals.get(row.locationCode) ?? 0) + row.qty,
+            );
+          }
+          const locationRows = [...locationTotals.entries()]
+            .map(([locationCode, qty]) => ({ locationCode, qty }))
+            .sort((a, b) => b.qty - a.qty);
           const requiredQty = rows.reduce(
             (sum, row) => sum + row.requiredQty,
             0,
           );
           const stockQty = locationRows.reduce((sum, row) => sum + row.qty, 0);
           const resolution =
-            targetIds.length > 1
-              ? "AMBIGUOUS"
-              : !product
+            targetIds.length === 0
                 ? "UNREGISTERED"
                 : stockQty < requiredQty
                   ? "INSUFFICIENT_STOCK"
@@ -115,24 +132,19 @@ async function buildJob(
             id: uid(),
             productId: product?.id,
             productBarcode: rows[0].productBarcode,
-            artist: product?.artist ?? "상품 확인 필요",
+            artist: product?.artist ?? candidateProducts[0]?.artist ?? "상품 확인 필요",
             nameVer:
               product?.nameVer ??
               (targetIds.length > 1
-                ? "공통 바코드 상품 선택 필요"
+                ? `동일 바코드 ${targetIds.length}개 상품 · LOC 스캔 후 선택`
                 : "미등록 88바코드"),
             orderNos: Array.from(new Set(rows.map((row) => row.orderNo))),
             requiredQty,
             pickedQty: 0,
-            locations: locationRows.map((row) => ({
-              locationCode: row.locationCode,
-              qty: row.qty,
-            })),
+            locations: locationRows,
             resolution,
             reviewReason:
-              resolution === "AMBIGUOUS"
-                ? `같은 바코드가 ${targetIds.length}개 상품에 연결되어 있습니다.`
-                : resolution === "UNREGISTERED"
+              resolution === "UNREGISTERED"
                   ? "등록된 상품에서 이 88바코드를 찾지 못했습니다."
                   : resolution === "INSUFFICIENT_STOCK"
                     ? `재고 부족: 필요 ${requiredQty}개 / 현재 ${stockQty}개`
@@ -172,6 +184,8 @@ function OutboundProgressContent() {
   const [showArchived, setShowArchived] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState("");
   const [activeShipmentId, setActiveShipmentId] = useState("");
+  const [activeLocation, setActiveLocation] = useState<OutboundPickLocation | null>(null);
+  const [pendingProductChoice, setPendingProductChoice] = useState<PendingProductChoice>(null);
   const [scanner, setScanner] = useState("");
   const [cameraOpen, setCameraOpen] = useState(false);
   const [focus, setFocus] = useState<FocusState>(null);
@@ -280,6 +294,8 @@ function OutboundProgressContent() {
       return;
     }
     setActiveShipmentId(shipment.id);
+    setActiveLocation(null);
+    setPendingProductChoice(null);
     updateShipment(shipment.id, (current) => ({
       ...current,
       status: current.status === "COMPLETED" ? "COMPLETED" : "IN_PROGRESS",
@@ -288,40 +304,23 @@ function OutboundProgressContent() {
     setFeedback({
       kind: "info",
       title: `${shipment.trackingNo} 피킹 시작`,
-      body: `${shipment.items.length}개 품목을 연속 스캔하세요.`,
+      body: `${shipment.items.length}개 품목 · 먼저 피킹할 LOC 바코드를 스캔하세요.`,
     });
     refocus();
   }
-  async function scanItem(raw: string) {
-    if (!activeShipment) return;
+  async function savePickedItem(item: OutboundPickingItem, qty: number, inputMethod: "SCAN" | "MANUAL", selectedProductId?: string) {
+    if (!activeShipment || !activeLocation) return;
     if (scanBusyRef.current) return;
-    const barcode = normalizeBarcode(raw);
-    const item = activeShipment.items.find(
-      (candidate) => normalizeBarcode(candidate.productBarcode) === barcode,
-    );
-    if (!item) {
-      playTone("ERROR");
-      setFeedback({
-        kind: "error",
-        title: "이 운송장에 없는 상품입니다.",
-        body: raw,
-      });
-      refocus();
-      return;
-    }
-    if (item.pickedQty >= item.requiredQty) {
-      playTone("ERROR");
-      showFocus(item, "EXCESS", 850);
-      return;
-    }
     scanBusyRef.current = true;
     setBusy(true);
     try {
       const saved = await pickOutboundItem({
         itemId: item.id,
-        qty: 1,
-        inputMethod: "SCAN",
+        locationBarcode: activeLocation.scannedBarcode,
+        qty,
+        inputMethod,
         idempotencyKey: uid(),
+        selectedProductId,
       });
       const nextQty = saved.pickedQty;
       const completed = nextQty === item.requiredQty;
@@ -342,6 +341,7 @@ function OutboundProgressContent() {
     });
       playTone(completed ? "COMPLETE" : "SCAN");
       showFocus(nextItem, completed ? "COMPLETE" : "PICKING", completed ? 950 : 0);
+      if (saved.shipmentStatus === "COMPLETED") setCameraOpen(false);
       refocus();
     } catch (cause) {
       playTone("ERROR");
@@ -351,7 +351,46 @@ function OutboundProgressContent() {
       setBusy(false);
     }
   }
-  function processScan(raw: string) {
+  async function scanItem(raw: string) {
+    if (!activeShipment || !activeLocation) return;
+    const barcode = normalizeBarcode(raw);
+    const item = activeShipment.items.find(
+      (candidate) => normalizeBarcode(candidate.productBarcode) === barcode,
+    );
+    if (!item) {
+      try {
+        const location = await resolveOutboundLocation(raw);
+        setActiveLocation(location);
+        setPendingProductChoice(null);
+        setFocus(null);
+        setFeedback({ kind: "info", title: `${location.locationCode} 선택`, body: "이 LOC에서 상품을 스캔하세요." });
+        playTone("SCAN");
+      } catch {
+        playTone("ERROR");
+        setFeedback({ kind: "error", title: "이 운송장에 없는 상품입니다.", body: raw });
+      }
+      return;
+    }
+    if (item.pickedQty >= item.requiredQty) {
+      playTone("ERROR");
+      showFocus(item, "EXCESS", 850);
+      return;
+    }
+    try {
+      const candidates = await getOutboundPickCandidates(item.id, activeLocation.scannedBarcode);
+      if (candidates.length === 0) throw new Error(`${activeLocation.locationCode}에 해당 상품 재고가 없습니다.`);
+      if (candidates.length > 1) {
+        setPendingProductChoice({ item, candidates, qty: 1, inputMethod: "SCAN" });
+        playTone("SCAN");
+        return;
+      }
+      await savePickedItem(item, 1, "SCAN", candidates[0].productId);
+    } catch (cause) {
+      playTone("ERROR");
+      setFeedback({ kind: "error", title: "LOC 재고 확인 실패", body: cause instanceof Error ? cause.message : "오류" });
+    }
+  }
+  async function processScan(raw: string) {
     if (!canUse) {
       setFeedback({ kind: "warning", title: "조회 전용 권한입니다." });
       return;
@@ -373,16 +412,28 @@ function OutboundProgressContent() {
       } else startShipment(shipment);
       return;
     }
-    void scanItem(value);
+    if (!activeLocation) {
+      try {
+        const location = await resolveOutboundLocation(value);
+        setActiveLocation(location);
+        setFeedback({ kind: "info", title: `${location.locationCode} 선택`, body: "이 LOC에서 상품을 스캔하세요." });
+        playTone("SCAN");
+      } catch (cause) {
+        playTone("ERROR");
+        setFeedback({ kind: "error", title: "LOC를 먼저 스캔하세요.", body: cause instanceof Error ? cause.message : "오류" });
+      }
+      return;
+    }
+    await scanItem(value);
   }
   function submitScan(event: React.FormEvent) {
     event.preventDefault();
     const value = scanner;
     setScanner("");
-    processScan(value);
+    void processScan(value);
   }
   async function applyManualQuantity() {
-    if (!activeShipment || !focus || !activeShipment.manualQuantityAllowed)
+    if (!activeShipment || !activeLocation || !focus || !activeShipment.manualQuantityAllowed)
       return;
     const add = Number(manualQty);
     if (
@@ -394,31 +445,19 @@ function OutboundProgressContent() {
       showFocus(focus.item, "EXCESS", 850);
       return;
     }
-    setBusy(true);
     try {
-      const saved = await pickOutboundItem({ itemId: focus.item.id, qty: add, inputMethod: "MANUAL", idempotencyKey: uid() });
-      const nextItem = { ...focus.item, pickedQty: saved.pickedQty };
-    const completed = nextItem.pickedQty === nextItem.requiredQty;
-    updateShipment(activeShipment.id, (shipment) => {
-      const items = shipment.items.map((item) =>
-        item.id === nextItem.id ? nextItem : item,
-      );
-      return {
-        ...shipment,
-        items,
-        status: items.every((item) => item.pickedQty === item.requiredQty)
-          ? "COMPLETED"
-          : "IN_PROGRESS",
-      };
-    });
+      const candidates = await getOutboundPickCandidates(focus.item.id, activeLocation.scannedBarcode);
+      if (candidates.length === 0) throw new Error(`${activeLocation.locationCode}에 해당 상품 재고가 없습니다.`);
+      if (candidates.length > 1) {
+        setPendingProductChoice({ item: focus.item, candidates, qty: add, inputMethod: "MANUAL" });
+        return;
+      }
       setManualQty("");
-      playTone(completed ? "COMPLETE" : "SCAN");
-      showFocus(nextItem, completed ? "COMPLETE" : "PICKING", completed ? 950 : 0);
-      refocus();
+      await savePickedItem(focus.item, add, "MANUAL", candidates[0].productId);
     } catch (cause) {
       playTone("ERROR");
       setFeedback({ kind: "error", title: "수량 반영 실패", body: cause instanceof Error ? cause.message : "오류" });
-    } finally { setBusy(false); }
+    }
   }
   async function upload() {
     if (!trackingFile || !quantityFile) return;
@@ -565,6 +604,8 @@ function OutboundProgressContent() {
                 onClick={() => {
                   setSelectedJobId(job.id);
                   setActiveShipmentId("");
+                  setActiveLocation(null);
+                  setPendingProductChoice(null);
                   setFocus(null);
                 }}
               >
@@ -682,7 +723,11 @@ function OutboundProgressContent() {
           <section className={`panel ${styles.scanPanel}`}>
             <form onSubmit={submitScan} className={styles.scanForm}>
               <label>
-                {activeShipment ? "상품 바코드 연속 스캔" : "운송장번호 스캔"}
+                {activeShipment
+                  ? activeLocation
+                    ? `상품 스캔 · ${activeLocation.locationCode}`
+                    : "LOC 바코드 스캔"
+                  : "운송장번호 스캔"}
                 <input
                   ref={scannerRef}
                   autoFocus={canUse}
@@ -692,7 +737,9 @@ function OutboundProgressContent() {
                   onChange={(event) => setScanner(event.target.value)}
                   placeholder={
                     activeShipment
-                      ? "상품 바코드를 계속 스캔하세요"
+                      ? activeLocation
+                        ? "상품 바코드 또는 다음 LOC를 스캔하세요"
+                        : "피킹할 LOC 바코드를 먼저 스캔하세요"
                       : "운송장 바코드를 스캔하세요"
                   }
                 />
@@ -709,6 +756,9 @@ function OutboundProgressContent() {
             {activeShipment ? (
               <div className={styles.toolbar}>
                 <strong>{activeShipment.trackingNo}</strong>
+                <span className={`status-badge ${activeLocation ? "success" : "inactive"}`}>
+                  {activeLocation ? `현재 LOC ${activeLocation.locationCode}` : "LOC 스캔 필요"}
+                </span>
                 <span className="status-badge active">
                   {activeShipment.assignedWorker || "작업자"} 피킹 중
                 </span>
@@ -716,6 +766,8 @@ function OutboundProgressContent() {
                   className="button button-secondary button-compact"
                   onClick={() => {
                     setActiveShipmentId("");
+                    setActiveLocation(null);
+                    setPendingProductChoice(null);
                     setFocus(null);
                     refocus();
                   }}
@@ -835,7 +887,45 @@ function OutboundProgressContent() {
           )}
         </>
       ) : null}
-      {focus && activeShipment ? (
+      {pendingProductChoice && activeShipment && activeLocation ? (
+        <div className={styles.focusBackdrop}>
+          <section className={styles.focusCard}>
+            <p className="eyebrow">동일 바코드 상품 선택</p>
+            <h2>{activeLocation.locationCode}</h2>
+            <p className="muted">
+              같은 바코드를 사용하는 상품이 이 LOC에 여러 개 있습니다. 실제로 집은 버전을 선택하세요.
+            </p>
+            <div className={styles.itemList}>
+              {pendingProductChoice.candidates.map((candidate) => (
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  key={candidate.productId}
+                  disabled={busy}
+                  onClick={async () => {
+                    const pending = pendingProductChoice;
+                    setPendingProductChoice(null);
+                    if (pending.inputMethod === "MANUAL") setManualQty("");
+                    await savePickedItem(
+                      pending.item,
+                      pending.qty,
+                      pending.inputMethod,
+                      candidate.productId,
+                    );
+                  }}
+                >
+                  <strong>{candidate.artist} · {candidate.nameVer}</strong>
+                  <span>{candidate.codeNo || "상품코드 없음"} · 현재 {candidate.qty.toLocaleString()}개</span>
+                </button>
+              ))}
+            </div>
+            <button className="button button-ghost" onClick={() => setPendingProductChoice(null)}>
+              선택 취소
+            </button>
+          </section>
+        </div>
+      ) : null}
+      {focus && activeShipment && !pendingProductChoice ? (
         <div
           className={`${styles.focusBackdrop} ${cameraOpen ? styles.cameraFocusBackdrop : ""}`}
         >
@@ -912,22 +1002,14 @@ function OutboundProgressContent() {
             setCameraOpen(false);
             refocus();
           }}
-          onDetected={(value) => {
-            if (!activeShipment) {
-              processScan(value);
+          onDetected={async (value) => {
+            const wasPicking = Boolean(activeShipment);
+            await processScan(value);
+            if (!wasPicking) {
               setCameraOpen(false);
               return false;
             }
-            const barcode = normalizeBarcode(value);
-            const item = activeShipment.items.find(
-              (candidate) =>
-                normalizeBarcode(candidate.productBarcode) === barcode,
-            );
-            processScan(value);
-            if (!item || item.pickedQty >= item.requiredQty) return true;
-            const itemCompleted = item.pickedQty + 1 >= item.requiredQty;
-            if (itemCompleted) setCameraOpen(false);
-            return !itemCompleted;
+            return true;
           }}
         />
       ) : null}
