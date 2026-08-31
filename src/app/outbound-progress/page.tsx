@@ -915,7 +915,13 @@ function OutboundProgressContent() {
                   }}
                 >
                   <strong>{candidate.artist} · {candidate.nameVer}</strong>
-                  <span>{candidate.codeNo || "상품코드 없음"} · 현재 {candidate.qty.toLocaleString()}개</span>
+                  <span>
+                    {candidate.codeNo || "상품코드 없음"} · 전체 {candidate.qty.toLocaleString()}개
+                    · LOC {candidate.locationCodes}
+                    {candidate.currentLocationQty > 0
+                      ? ` · 현재 LOC ${candidate.currentLocationQty.toLocaleString()}개`
+                      : " · 현재 LOC 재고 없음"}
+                  </span>
                 </button>
               ))}
             </div>
