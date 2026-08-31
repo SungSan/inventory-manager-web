@@ -106,11 +106,27 @@ begin
   ) order by l.created_at limit 1 for update of l;
   if not found then raise exception '등록된 활성 LOC 바코드가 아닙니다.'; end if;
 
+  if v_item.product_id is null then
+    if p_selected_product_id is null then
+      raise exception '동일 바코드 상품은 실제 버전을 선택해야 합니다.';
+    end if;
+    if not exists(
+      select 1
+      from public.inventory_balances ib
+      join public.products p on p.id=ib.product_id and p.active
+      join public.barcodes b on b.scan_target_id=p.scan_target_id and b.active
+      where ib.location_id=v_location.id and ib.product_id=p_selected_product_id and ib.qty>0
+        and b.normalized_value=public.normalize_barcode(v_item.product_barcode)
+    ) then
+      raise exception '선택한 상품은 이 LOC의 해당 바코드 재고가 아닙니다.';
+    end if;
+  end if;
+
   select coalesce(sum(ib.qty),0) into v_total_stock
   from public.inventory_balances ib
   where ib.location_id=v_location.id and ib.qty>0 and (
     (v_item.product_id is not null and ib.product_id=v_item.product_id)
-    or (v_item.product_id is null and (p_selected_product_id is null or ib.product_id=p_selected_product_id) and exists(
+    or (v_item.product_id is null and ib.product_id=p_selected_product_id and exists(
       select 1 from public.products p join public.barcodes b on b.scan_target_id=p.scan_target_id and b.active
       where p.id=ib.product_id and p.active and b.normalized_value=public.normalize_barcode(v_item.product_barcode)
     ))
@@ -125,7 +141,7 @@ begin
     from public.inventory_balances ib
     where ib.location_id=v_location.id and ib.qty>0 and (
       (v_item.product_id is not null and ib.product_id=v_item.product_id)
-      or (v_item.product_id is null and (p_selected_product_id is null or ib.product_id=p_selected_product_id) and exists(
+      or (v_item.product_id is null and ib.product_id=p_selected_product_id and exists(
         select 1 from public.products p join public.barcodes b on b.scan_target_id=p.scan_target_id and b.active
         where p.id=ib.product_id and p.active and b.normalized_value=public.normalize_barcode(v_item.product_barcode)
       ))
@@ -150,6 +166,10 @@ begin
     v_remaining:=v_remaining-v_take;
   end loop;
 
+  if v_remaining<>0 then
+    raise exception '동시 재고 변경으로 차감 가능 수량이 부족합니다. 다시 스캔하세요.';
+  end if;
+
   update public.outbound_items set picked_qty=picked_qty+p_qty,updated_at=now()
   where id=v_item.id returning * into v_item;
   insert into public.outbound_pick_events(job_id,shipment_id,item_id,qty,input_method,idempotency_key,actor_id)
@@ -171,15 +191,57 @@ begin
   );
 end; $$;
 
--- Existing ambiguous rows represent one physical barcode split over product records/LOCs.
--- They become location-resolved items; unregistered and insufficient-stock reviews remain blocked.
+-- Correct rows already promoted by an earlier SQL47 run when their total stock is insufficient.
+update public.outbound_items i
+set resolution='INSUFFICIENT_STOCK',
+    review_reason='재고 부족: 필요 '||i.required_qty||'개 / 현재 '||coalesce((
+      select sum(ib.qty)
+      from public.products p
+      join public.barcodes b on b.scan_target_id=p.scan_target_id and b.active
+      join public.inventory_balances ib on ib.product_id=p.id and ib.qty>0
+      where p.active and b.normalized_value=public.normalize_barcode(i.product_barcode)
+    ),0)||'개',
+    updated_at=now()
+where i.product_id is null
+  and i.resolution='MATCHED'
+  and coalesce((
+    select sum(ib.qty)
+    from public.products p
+    join public.barcodes b on b.scan_target_id=p.scan_target_id and b.active
+    join public.inventory_balances ib on ib.product_id=p.id and ib.qty>0
+    where p.active and b.normalized_value=public.normalize_barcode(i.product_barcode)
+  ),0)<i.required_qty;
+
+-- Existing ambiguous rows become location-resolved only when enough total stock exists.
+update public.outbound_items i
+set resolution='INSUFFICIENT_STOCK',
+    review_reason='재고 부족: 필요 '||i.required_qty||'개 / 현재 '||coalesce((
+      select sum(ib.qty)
+      from public.products p
+      join public.barcodes b on b.scan_target_id=p.scan_target_id and b.active
+      join public.inventory_balances ib on ib.product_id=p.id and ib.qty>0
+      where p.active and b.normalized_value=public.normalize_barcode(i.product_barcode)
+    ),0)||'개',
+    updated_at=now()
+where i.resolution='AMBIGUOUS'
+  and coalesce((
+    select sum(ib.qty)
+    from public.products p
+    join public.barcodes b on b.scan_target_id=p.scan_target_id and b.active
+    join public.inventory_balances ib on ib.product_id=p.id and ib.qty>0
+    where p.active and b.normalized_value=public.normalize_barcode(i.product_barcode)
+  ),0)<i.required_qty;
+
 update public.outbound_items i
 set resolution='MATCHED',review_reason=null,updated_at=now()
 where i.resolution='AMBIGUOUS'
-  and exists(
-    select 1 from public.products p join public.barcodes b on b.scan_target_id=p.scan_target_id and b.active
+  and coalesce((
+    select sum(ib.qty)
+    from public.products p
+    join public.barcodes b on b.scan_target_id=p.scan_target_id and b.active
+    join public.inventory_balances ib on ib.product_id=p.id and ib.qty>0
     where p.active and b.normalized_value=public.normalize_barcode(i.product_barcode)
-  );
+  ),0)>=i.required_qty;
 
 insert into public.outbound_item_locations(item_id,location_id,location_code,source_qty,priority)
 select i.id,ib.location_id,l.location_code,sum(ib.qty)::int,
