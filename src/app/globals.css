@@ -440,17 +440,26 @@ input[type="checkbox"] { width: 18px; min-height: 18px; padding: 0; }
   .inventory-summary-table td:nth-child(9) {
     display: grid;
     grid-column: 1 / -1 !important;
-    order: -7;
+    order: -6;
     border-bottom: 0;
   }
   .inventory-summary-table td:nth-child(5),
-  .inventory-summary-table td:nth-child(6),
-  .inventory-summary-table td:nth-child(8) { display: none; }
+  .inventory-summary-table td:nth-child(6) { display: none; }
+  .inventory-summary-table td:nth-child(8) {
+    display: flex;
+    grid-column: 1 / -1 !important;
+    order: -7;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 7px !important;
+    padding-bottom: 7px !important;
+  }
   .inventory-summary-table td:nth-child(2)::before { content: "상품 바코드"; }
   .inventory-summary-table td:nth-child(1)::before { content: "구분"; }
   .inventory-summary-table td:nth-child(7)::before { content: "로케이션 수"; }
   .inventory-summary-table td:nth-child(3)::before { content: "아티스트"; }
   .inventory-summary-table td:nth-child(4)::before { content: "상품명/버전"; }
+  .inventory-summary-table td:nth-child(8)::before { content: "총재고"; }
   .inventory-summary-table td:nth-child(9)::before { display: none; }
   .inventory-summary-table td:nth-child(9) .button { display: inline-flex; width: 100%; }
 }
