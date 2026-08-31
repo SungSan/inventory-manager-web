@@ -273,9 +273,8 @@ input[type="checkbox"] { width: 18px; min-height: 18px; padding: 0; }
 .inventory-summary-table td:nth-child(8) { width: 72px; text-align: right; }
 .inventory-summary-table th:last-child,
 .inventory-summary-table td:last-child { width: 104px; padding-right: 10px; }
-.inventory-summary-table td:nth-child(3),
-.inventory-summary-table td:nth-child(4) { min-width: 150px; white-space: normal; line-height: 1.35; }
-.inventory-summary-table td:nth-child(4) { min-width: 220px; overflow-wrap: anywhere; }
+.inventory-summary-table td:nth-child(3) { min-width: 150px; white-space: nowrap; line-height: 1.35; }
+.inventory-summary-table td:nth-child(4) { min-width: 260px; white-space: nowrap; line-height: 1.35; }
 .inventory-summary-table td:nth-child(5),
 .inventory-summary-table td:nth-child(6) { min-width: 118px; }
 .inventory-summary-table .barcode-chip-list { flex-wrap: nowrap; }
@@ -336,7 +335,7 @@ input[type="checkbox"] { width: 18px; min-height: 18px; padding: 0; }
   .inventory-summary-table td:nth-child(3),
   .inventory-summary-table td:nth-child(4),
   .inventory-summary-table td:last-child { grid-column: 1 / -1; }
-  .inventory-summary-table td:nth-child(4) { order: -3; }
+  .inventory-summary-table td:nth-child(4) { order: -3; white-space: nowrap; overflow-x: auto; overflow-wrap: normal; }
   .inventory-summary-table td:nth-child(3) { order: -2; }
   .inventory-summary-table td:nth-child(2) { order: -1; }
   .inventory-summary-table td:last-child { border-bottom: 0; }
