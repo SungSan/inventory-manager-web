@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PermissionGuard } from "@/components/permission-guard";
 import { useUser } from "@/components/user-provider";
 import { listProducts, subscribeToInventory } from "@/lib/inventory-api";
@@ -21,6 +21,7 @@ import {
 import styles from "./work-requests.module.css";
 
 type Tab = "new" | "own" | "work" | "all";
+type ProductCategoryFilter = "ALL" | "ALBUM" | "MD";
 const statusLabel: Record<WorkRequest["status"], string> = { SCHEDULED:"작업 전",IN_PROGRESS:"작업 중",PARTIAL:"작업 중",COMPLETED:"작업 완료",REJECTED:"반려",REQUESTER_CANCELLED:"요청자 삭제",VOIDED:"관리자 무효" };
 
 function dateText(date: Date): string {
@@ -39,6 +40,8 @@ function WorkRequestsContent() {
   const [selected,setSelected]=useState<Array<{product:Product;qty:NumberInputValue}>>([]);
   const [productKeyword,setProductKeyword]=useState("");
   const [productResults,setProductResults]=useState<Product[]>([]);
+  const [productCategory,setProductCategory]=useState<ProductCategoryFilter>("ALL");
+  const productResultsRef=useRef<HTMLDivElement>(null);
   const [assignees,setAssignees]=useState<WorkRequestAssignee[]>([]);
   const [candidateIds,setCandidateIds]=useState<string[]>([]);
   const [busy,setBusy]=useState(false);
@@ -73,9 +76,9 @@ function WorkRequestsContent() {
 
   useEffect(()=>{
     if(!productKeyword.trim()){setProductResults([]);return;}
-    const timer=window.setTimeout(()=>void listProducts(productKeyword,false).then((items)=>setProductResults(items.slice(0,30))).catch((cause)=>setError(cause instanceof Error?cause.message:"상품 검색 실패")),200);
+    const timer=window.setTimeout(()=>void listProducts(productKeyword,false).then((items)=>setProductResults(items.filter((item)=>productCategory==="ALL"||(item.productCategory??"ALBUM")===productCategory).slice(0,30))).catch((cause)=>setError(cause instanceof Error?cause.message:"상품 검색 실패")),200);
     return()=>window.clearTimeout(timer);
-  },[productKeyword]);
+  },[productCategory,productKeyword]);
 
   const itemInput=useMemo<WorkRequestProductInput[]>(()=>selected.map((item)=>({productId:item.product.id,qty:numberOrZero(item.qty)})),[selected]);
   const totalQty=useMemo(()=>selected.reduce((sum,item)=>sum+numberOrZero(item.qty),0),[selected]);
@@ -88,7 +91,7 @@ function WorkRequestsContent() {
 
   useEffect(()=>{setCandidateIds((current)=>current.filter((id)=>assignees.some((item)=>item.userId===id&&item.canAccept)));},[assignees]);
 
-  function addProduct(product:Product){setSelected((current)=>current.some((item)=>item.product.id===product.id)?current:[...current,{product,qty:1}]);setProductKeyword("");setProductResults([]);}
+  function addProduct(product:Product){const scrollTop=productResultsRef.current?.scrollTop??0;setSelected((current)=>current.some((item)=>item.product.id===product.id)?current:[...current,{product,qty:1}]);window.requestAnimationFrame(()=>{if(productResultsRef.current)productResultsRef.current.scrollTop=scrollTop;});}
   function setQty(productId:string,raw:string){setSelected((current)=>current.map((item)=>item.product.id===productId?{...item,qty:parseIntegerDraft(raw,1)}:item));}
 
   async function submit(){
@@ -131,8 +134,11 @@ function WorkRequestsContent() {
 
       <section className="panel page-stack">
         <div className="section-heading"><div><p className="eyebrow">REQUEST ITEMS</p><h3>요청 상품</h3></div><strong>{selected.length} SKU · {totalQty.toLocaleString()}개</strong></div>
+        <div className={styles.categoryFilter} role="group" aria-label="상품 구분">
+          {(["ALL","ALBUM","MD"] as ProductCategoryFilter[]).map((category)=><button type="button" key={category} className={productCategory===category?styles.active:""} onClick={()=>setProductCategory(category)}>{category==="ALL"?"전체":category==="ALBUM"?"앨범":"MD"}</button>)}
+        </div>
         <div className={styles.productSearch}><input value={productKeyword} onChange={(event)=>setProductKeyword(event.target.value)} placeholder="상품명, 아티스트, CODE_NO 검색"/><button className="button button-secondary" onClick={()=>setProductKeyword(productKeyword.trim())}>검색</button></div>
-        {productResults.length>0?<div className={styles.searchResults}>{productResults.map((product)=><div key={product.id} className={styles.searchRow}><div><strong>{product.artist} · {product.nameVer}</strong><p>{product.pCodeNo||"-"} · {product.codeNo}</p></div><span></span><button className="button button-secondary button-compact" onClick={()=>addProduct(product)}>추가</button></div>)}</div>:null}
+        {productResults.length>0?<div ref={productResultsRef} className={styles.searchResults}>{productResults.map((product)=>{const added=selected.some((item)=>item.product.id===product.id);return <div key={product.id} className={styles.searchRow}><div><strong>{product.artist} · {product.nameVer}</strong><p>{product.productCategory==="MD"?"MD":"앨범"} · {product.pCodeNo||"-"} · {product.codeNo}</p></div><span></span><button className="button button-secondary button-compact" disabled={added} onClick={()=>addProduct(product)}>{added?"추가됨":"추가"}</button></div>})}</div>:null}
         <div className={styles.products}>{selected.map((item)=><div key={item.product.id} className={styles.selectedRow}><div><strong>{item.product.artist} · {item.product.nameVer}</strong><p>{item.product.pCodeNo||"-"} · {item.product.codeNo}</p></div><input type="number" min={1} value={item.qty} onChange={(event)=>setQty(item.product.id,event.target.value)}/><button className="button button-secondary button-compact" onClick={()=>setSelected((current)=>current.filter((row)=>row.product.id!==item.product.id))}>제거</button></div>)}</div>
       </section>
 
