@@ -1,4 +1,4 @@
--- SAN WMS V5.0.6: preserve ALBUM/MD category during CSV inventory migration
+-- SAN WMS V5.0.6: preserve ALBUM/MD category and set facility for newly created LOCs during CSV inventory migration
 -- Apply after SQL47. Existing products and inventory are not changed until an import is run.
 
 begin;
@@ -81,8 +81,13 @@ begin
     select * into v_location from public.locations where location_code=upper(r->>'locationCode') limit 1;
     if v_location.id is null then
       insert into public.scan_targets(target_type) values('location') returning id into v_target;
-      insert into public.locations(scan_target_id,location_code,zone)
-      values(v_target,upper(r->>'locationCode'),split_part(upper(r->>'locationCode'),'-',1))
+      insert into public.locations(scan_target_id,location_code,zone,facility)
+      values(
+        v_target,
+        upper(r->>'locationCode'),
+        split_part(upper(r->>'locationCode'),'-',1),
+        case when v_category='MD' then 'GWANSAN' else 'DAEJA' end
+      )
       returning * into v_location;
       v_locations:=v_locations+1;
       v_barcode:=coalesce(nullif(r->>'locationBarcode',''),upper(r->>'locationCode'));
