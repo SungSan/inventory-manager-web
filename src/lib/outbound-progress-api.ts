@@ -148,6 +148,8 @@ export interface OutboundPickCandidate {
   nameVer: string;
   codeNo: string;
   qty: number;
+  currentLocationQty: number;
+  locationCodes: string;
 }
 
 export async function resolveOutboundLocation(barcode: string): Promise<OutboundPickLocation> {
@@ -172,5 +174,7 @@ export async function getOutboundPickCandidates(
     nameVer: String(row.name_ver ?? ""),
     codeNo: String(row.code_no ?? ""),
     qty: Number(row.qty),
+    currentLocationQty: Number(row.current_location_qty ?? 0),
+    locationCodes: String(row.location_codes ?? "재고 LOC 없음"),
   }));
 }
