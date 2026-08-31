@@ -893,7 +893,7 @@ function OutboundProgressContent() {
             <p className="eyebrow">동일 바코드 상품 선택</p>
             <h2>{activeLocation.locationCode}</h2>
             <p className="muted">
-              같은 바코드를 사용하는 상품이 이 LOC에 여러 개 있습니다. 실제로 집은 버전을 선택하세요.
+              같은 바코드를 사용하는 상품 버전이 여러 개 있습니다. 실제로 집은 버전을 선택하세요. 각 버전의 보관 LOC와 현재 LOC 재고를 확인할 수 있습니다.
             </p>
             <div className={styles.itemList}>
               {pendingProductChoice.candidates.map((candidate) => (
@@ -915,7 +915,13 @@ function OutboundProgressContent() {
                   }}
                 >
                   <strong>{candidate.artist} · {candidate.nameVer}</strong>
-                  <span>{candidate.codeNo || "상품코드 없음"} · 현재 {candidate.qty.toLocaleString()}개</span>
+                  <span>
+                    {candidate.codeNo || "상품코드 없음"} · 전체 {candidate.qty.toLocaleString()}개
+                    · LOC {candidate.locationCodes}
+                    {candidate.currentLocationQty > 0
+                      ? ` · 현재 LOC ${candidate.currentLocationQty.toLocaleString()}개`
+                      : " · 현재 LOC 재고 없음"}
+                  </span>
                 </button>
               ))}
             </div>

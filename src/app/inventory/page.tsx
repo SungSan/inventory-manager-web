@@ -429,7 +429,7 @@ function InventoryContent() {
 
       {error ? <p className="inline-error">{error}</p> : null}
 
-      <section className="metric-grid">
+      <section className="metric-grid inventory-metrics">
         <article className="metric-card">
           <span>상품 묶음</span>
           <strong>{summaries.length}</strong>
@@ -444,9 +444,9 @@ function InventoryContent() {
         </article>
       </section>
 
-      <section className="panel">
-        <div className="table-wrap">
-          <table>
+      <section className="panel inventory-summary-panel">
+        <div className="table-wrap inventory-summary-wrap">
+          <table className="inventory-summary-table">
             <thead>
               <tr>
                 <th>구분</th>
@@ -463,12 +463,12 @@ function InventoryContent() {
             <tbody>
               {summaries.map((item) => (
                 <tr key={item.groupKey}>
-                  <td>
+                  <td data-label="구분">
                     <span className="status-badge">
                       {productCategoryLabel[item.productCategory]}
                     </span>
                   </td>
-                  <td>
+                  <td data-label="상품 바코드">
                     <div className="barcode-chip-list">
                       <span className="barcode-chip">
                         <code>{item.displayBarcode}</code>
@@ -485,8 +485,8 @@ function InventoryContent() {
                       ) : null}
                     </div>
                   </td>
-                  <td>{formatValueList(item.artists)}</td>
-                  <td>
+                  <td data-label="아티스트">{formatValueList(item.artists)}</td>
+                  <td data-label="상품명/버전">
                     <strong>{item.nameVer || "(상품명/버전 없음)"}</strong>
                     {item.productIds.length > 1 ? (
                       <div className="small muted">
@@ -494,13 +494,13 @@ function InventoryContent() {
                       </div>
                     ) : null}
                   </td>
-                  <td>{formatValueList(item.pCodeNos)}</td>
-                  <td>{formatValueList(item.codeNos)}</td>
-                  <td>{item.locationRows.length}</td>
-                  <td>
+                  <td data-label="P_CODE">{formatValueList(item.pCodeNos)}</td>
+                  <td data-label="CODE_NO">{formatValueList(item.codeNos)}</td>
+                  <td data-label="로케이션 수">{item.locationRows.length}</td>
+                  <td data-label="총재고">
                     <strong>{item.totalQty.toLocaleString()}</strong>
                   </td>
-                  <td>
+                  <td data-label="상세">
                     <button
                       className="button button-secondary button-compact"
                       onClick={() => setSelected(item)}

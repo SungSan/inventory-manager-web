@@ -39,17 +39,36 @@ begin
   where l.active and (b.normalized_value=public.normalize_barcode(p_location_barcode) or public.normalize_barcode(l.location_code)=public.normalize_barcode(p_location_barcode))
   order by l.created_at limit 1;
   if v_location_id is null then raise exception '등록된 활성 LOC 바코드가 아닙니다.'; end if;
+
   select coalesce(jsonb_agg(jsonb_build_object(
-    'product_id',p.id,'artist',p.artist,'name_ver',p.name_ver,'code_no',p.code_no,'qty',ib.qty
-  ) order by ib.qty desc,p.artist,p.name_ver),'[]'::jsonb) into v_result
-  from public.inventory_balances ib join public.products p on p.id=ib.product_id and p.active
-  where ib.location_id=v_location_id and ib.qty>0 and (
-    (v_item.product_id is not null and p.id=v_item.product_id)
-    or (v_item.product_id is null and exists(
-      select 1 from public.barcodes pb where pb.scan_target_id=p.scan_target_id and pb.active
+    'product_id',candidate.product_id,
+    'artist',candidate.artist,
+    'name_ver',candidate.name_ver,
+    'code_no',candidate.code_no,
+    'qty',candidate.total_qty,
+    'current_location_qty',candidate.current_location_qty,
+    'location_codes',candidate.location_codes
+  ) order by candidate.artist,candidate.name_ver,candidate.code_no),'[]'::jsonb)
+  into v_result
+  from (
+    select
+      p.id as product_id,
+      p.artist,
+      p.name_ver,
+      p.code_no,
+      coalesce(sum(ib.qty) filter(where ib.qty>0 and l.active),0)::int as total_qty,
+      coalesce(sum(ib.qty) filter(where ib.qty>0 and ib.location_id=v_location_id),0)::int as current_location_qty,
+      coalesce(string_agg(distinct l.location_code, ', ' order by l.location_code)
+        filter(where ib.qty>0 and l.active),'재고 LOC 없음') as location_codes
+    from public.products p
+    join public.barcodes pb on pb.scan_target_id=p.scan_target_id and pb.active
       and pb.normalized_value=public.normalize_barcode(v_item.product_barcode)
-    ))
-  );
+    left join public.inventory_balances ib on ib.product_id=p.id
+    left join public.locations l on l.id=ib.location_id
+    where p.active
+      and (v_item.product_id is null or p.id=v_item.product_id)
+    group by p.id,p.artist,p.name_ver,p.code_no
+  ) candidate;
   return v_result;
 end; $$;
 

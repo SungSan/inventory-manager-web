@@ -462,7 +462,7 @@ export async function listTransactions(
   if (operation !== "ALL") query = query.eq("operation", operation);
   if (kind === "TRANSFER") query = query.eq("reference_type", "TRANSFER");
   if (kind === "INOUT")
-    query = query.or("reference_type.is.null,reference_type.neq.TRANSFER");
+    query = query.or("reference_type.is.null,reference_type.not.in.(TRANSFER,OUTBOUND_PROGRESS)");
   if (options.startAt) query = query.gte("created_at", options.startAt);
   if (options.endBefore) query = query.lt("created_at", options.endBefore);
   if (search.trim()) query = query.ilike("search_text", `%${search.trim()}%`);
