@@ -22,7 +22,7 @@ export async function listOutboundJobs(includeArchived = false): Promise<Outboun
   let query = client()
     .from("outbound_jobs")
     .select(
-      "id,name,status,created_at,archived_at,archive_reason,outbound_shipments(id,tracking_no,status,manual_quantity_allowed,assigned_worker_label,outbound_items(id,product_id,product_barcode,artist,name_ver,order_nos,required_qty,picked_qty,resolution,review_reason,outbound_item_locations(location_code,source_qty,priority)))",
+      "id,name,note,status,created_at,archived_at,archive_reason,outbound_shipments(id,tracking_no,status,manual_quantity_allowed,assigned_worker_label,outbound_items(id,product_id,product_barcode,artist,name_ver,order_nos,required_qty,picked_qty,resolution,review_reason,outbound_item_locations(location_code,source_qty,priority)))",
     )
     .order("created_at", { ascending: false });
   if (!includeArchived) query = query.is("archived_at", null);
@@ -31,6 +31,7 @@ export async function listOutboundJobs(includeArchived = false): Promise<Outboun
   return rows(data).map((job) => ({
     id: String(job.id),
     name: String(job.name),
+    note: String(job.note ?? ""),
     status: String(job.status) as OutboundJob["status"],
     createdAt: String(job.created_at),
     archivedAt: job.archived_at ? String(job.archived_at) : undefined,
@@ -83,6 +84,7 @@ export async function archiveOutboundJob(
 }
 
 export async function createOutboundJob(job: OutboundJob): Promise<string> {
+  if (!job.note.trim()) throw new Error("출고 작업 메모를 입력하세요.");
   const { data, error } = await client().rpc("create_outbound_job", {
     p_job: job,
   });

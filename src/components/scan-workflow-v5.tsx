@@ -52,7 +52,7 @@ function injectNotePreset(label: HTMLLabelElement) {
     .map((node) => node.textContent?.trim() ?? "")
     .join(" ")
     .trim();
-  if (ownText !== "메모(선택)") return;
+  if (!ownText.startsWith("메모(필수)")) return;
 
   label.dataset.notePresetReady = "true";
   input.placeholder = "빠른 메모를 선택하거나 직접 입력";
@@ -260,6 +260,10 @@ function LocationFirstInboundProductAdder() {
 
   async function confirmAdd() {
     if (drafts.length === 0 || busy) return;
+    if (!note.trim()) {
+      setFeedback({ kind: "error", title: "메모를 입력하세요.", body: "입고 등록에는 메모가 필수입니다." });
+      return;
+    }
     const totalQty = drafts.reduce((sum, item) => sum + numberOrZero(item.qty), 0);
     if (drafts.some((item) => !isIntegerInputValue(item.qty, 1))) {
       setFeedback({ kind: "error", title: "모든 상품의 입고 수량을 입력하세요." });
@@ -277,7 +281,7 @@ function LocationFirstInboundProductAdder() {
         operation: "IB",
         locationId: resolvedLocation.id,
         items: drafts.map((item) => ({ productId: item.product.id, qty: Number(item.qty) })),
-        note: note.trim() || "LOC 우선 스캔 신규 상품 입고",
+        note: note.trim(),
         idempotencyKey: createIdempotencyKey(),
       });
       setDrafts([]);
@@ -346,10 +350,10 @@ function LocationFirstInboundProductAdder() {
             </table>
           </div>
           <div className="form-grid" style={{ marginTop: 14 }}>
-            <label>메모(선택)<input value={note} onChange={(event) => setNote(event.target.value)} placeholder="작업 사유 또는 메모" disabled={busy} /></label>
+            <label>메모(필수) *<input value={note} onChange={(event) => setNote(event.target.value)} placeholder="작업 사유 또는 메모를 입력하세요" required disabled={busy} /></label>
             <div className="resolved-card"><span>입고 예정</span><strong>{drafts.length} SKU / {totalQty.toLocaleString()}개</strong><small>신규 LOC 상품 {newSkuCount} SKU</small></div>
           </div>
-          <button className="button button-primary button-full" onClick={() => void confirmAdd()} disabled={busy || drafts.length === 0 || qtyInvalid}>{busy ? "처리 중..." : `${drafts.length} SKU / ${totalQty.toLocaleString()}개 LOC 입고 확정`}</button>
+          <button className="button button-primary button-full" onClick={() => void confirmAdd()} disabled={busy || drafts.length === 0 || qtyInvalid || !note.trim()}>{busy ? "처리 중..." : `${drafts.length} SKU / ${totalQty.toLocaleString()}개 LOC 입고 확정`}</button>
         </div>
       ) : null}
 

@@ -33,6 +33,7 @@ export interface OutboundShipment {
 export interface OutboundJob {
   id: string;
   name: string;
+  note: string;
   createdAt: string;
   archivedAt?: string;
   archiveReason?: string;
