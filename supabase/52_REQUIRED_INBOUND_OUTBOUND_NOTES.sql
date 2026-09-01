@@ -1,4 +1,4 @@
--- SAN WMS V5.0.12: require notes for inbound, outbound, and outbound job creation.
+-- SAN WMS V5.1.2: require notes for inbound, outbound, and outbound job creation.
 -- Existing inventory transactions are preserved. Existing outbound jobs receive a migration label.
 
 begin;

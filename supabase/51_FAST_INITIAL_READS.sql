@@ -1,4 +1,4 @@
--- SAN WMS V5.0.10: fast read-only snapshots for dashboard and inventory
+-- SAN WMS V5.1.0: fast read-only snapshots for dashboard and inventory
 begin;
 
 create or replace function public.get_facility_dashboard_metrics_fast()
@@ -84,4 +84,4 @@ grant execute on function public.get_inventory_page_snapshot_fast() to authentic
 notify pgrst,'reload schema';
 commit;
 
-select 'SAN WMS V5.0.10 fast initial reads migration completed' as result;
+select 'SAN WMS V5.1.0 fast initial reads migration completed' as result;
