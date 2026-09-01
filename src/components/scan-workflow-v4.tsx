@@ -417,6 +417,10 @@ export function ScanWorkflowV4() {
       setFeedback({ kind: "error", title: "상품과 로케이션을 확인하세요." });
       return;
     }
+    if (!note.trim()) {
+      setFeedback({ kind: "error", title: "메모를 입력하세요.", body: "입고·출고 등록에는 메모가 필수입니다." });
+      return;
+    }
     if (productQtyInvalid) {
       setFeedback({ kind: "error", title: "모든 상품의 수량을 입력하세요." });
       return;
@@ -445,7 +449,7 @@ export function ScanWorkflowV4() {
           productId: item.product.id,
           qty: Number(item.qty),
         })),
-        note: note.trim() || undefined,
+        note: note.trim(),
         idempotencyKey: createIdempotencyKey(),
       });
       const rows = await listLocationInventory(productLocation.id);
@@ -528,6 +532,10 @@ export function ScanWorkflowV4() {
       setFeedback({ kind: "error", title: "상품을 선택하세요." });
       return;
     }
+    if (!note.trim()) {
+      setFeedback({ kind: "error", title: "메모를 입력하세요.", body: "입고·출고 등록에는 메모가 필수입니다." });
+      return;
+    }
     if (selectedQtyInvalid) {
       setFeedback({
         kind: "error",
@@ -552,7 +560,7 @@ export function ScanWorkflowV4() {
           productId,
           qty: Number(qty),
         })),
-        note: note.trim() || undefined,
+        note: note.trim(),
         idempotencyKey: createIdempotencyKey(),
       });
       await loadLocationRows(location.id);
@@ -591,6 +599,10 @@ export function ScanWorkflowV4() {
 
   async function confirmStockCount() {
     if (!stockCountTarget) return;
+    if (!stockCountReason.trim()) {
+      setFeedback({ kind: "error", title: "메모를 입력하세요.", body: "남은 수량 확정으로 발생하는 출고에는 사유·메모가 필수입니다." });
+      return;
+    }
     if (!isIntegerInputValue(remainingQty, 0, stockCountTarget.currentQty)) {
       setFeedback({
         kind: "error",
@@ -875,11 +887,12 @@ export function ScanWorkflowV4() {
               </div>
             </div>
             <label>
-              메모(선택)
+              메모(필수) *
               <input
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
-                placeholder="작업 사유 또는 메모"
+                placeholder="작업 사유 또는 메모를 입력하세요"
+                required
                 disabled={busy || productDone}
               />
             </label>
@@ -891,6 +904,7 @@ export function ScanWorkflowV4() {
                 productItems.length === 0 ||
                 productQtyInvalid ||
                 productStockInvalid ||
+                !note.trim() ||
                 busy ||
                 productDone
               }
@@ -1010,11 +1024,12 @@ export function ScanWorkflowV4() {
           </div>
           <div className={styles.batchFooter}>
             <label>
-              메모(선택)
+              메모(필수) *
               <input
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
-                placeholder="작업 사유 또는 메모"
+                placeholder="작업 사유 또는 메모를 입력하세요"
+                required
                 disabled={busy}
               />
             </label>
@@ -1027,7 +1042,7 @@ export function ScanWorkflowV4() {
             <button
               className="button button-primary"
               onClick={() => void confirmLocationBatch()}
-              disabled={selectedCount === 0 || selectedQtyInvalid || busy}
+              disabled={selectedCount === 0 || selectedQtyInvalid || !note.trim() || busy}
             >
               {busy
                 ? "처리 중..."
@@ -1156,18 +1171,19 @@ export function ScanWorkflowV4() {
               />
             </label>
             <label>
-              사유·메모(선택)
+              사유·메모(필수) *
               <input
                 value={stockCountReason}
                 onChange={(event) => setStockCountReason(event.target.value)}
-                placeholder="비어 있으면 재고 실사 수량으로 저장"
+                placeholder="출고 사유 또는 메모를 입력하세요"
+                required
                 disabled={busy}
               />
             </label>
             <button
               className="button button-primary button-full"
               onClick={() => void confirmStockCount()}
-              disabled={busy}
+              disabled={busy || !stockCountReason.trim()}
             >
               {busy ? "처리 중..." : "남은 수량 확정"}
             </button>

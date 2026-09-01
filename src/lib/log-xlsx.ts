@@ -45,16 +45,16 @@ export function downloadLogXlsx(input: {
   } else if (input.tab === "outbound") {
     label = "출고작업이력";
     addSheet(workbook, "작업 요약", [
-      ["생성일", "상태", "출고 작업", "송장 수", "예정 수량", "출고 완료", "작업자", "숨김", "숨김 사유", "작업 ID"],
+      ["생성일", "상태", "출고 작업", "메모", "송장 수", "예정 수량", "출고 완료", "작업자", "숨김", "숨김 사유", "작업 ID"],
       ...input.outboundJobs.map((job) => {
         const items = job.shipments.flatMap((shipment) => shipment.items);
-        return [new Date(job.createdAt), job.status, job.name, job.shipments.length,
+        return [new Date(job.createdAt), job.status, job.name, job.note || "", job.shipments.length,
           items.reduce((sum, item) => sum + item.requiredQty, 0),
           items.reduce((sum, item) => sum + item.pickedQty, 0),
           Array.from(new Set(job.shipments.map((shipment) => shipment.assignedWorker).filter(Boolean))).join(", "),
           job.archivedAt ? "Y" : "N", job.archiveReason || "", job.id];
       }),
-    ], [20, 14, 34, 12, 14, 14, 22, 9, 30, 38]);
+    ], [20, 14, 34, 40, 12, 14, 14, 22, 9, 30, 38]);
     addSheet(workbook, "송장 품목 상세", [
       ["작업명", "운송장", "송장 상태", "아티스트", "상품명/버전", "상품 바코드", "예정 수량", "출고 완료", "작업자", "작업 ID", "송장 ID"],
       ...input.outboundJobs.flatMap((job) => job.shipments.flatMap((shipment) => shipment.items.map((item) => [

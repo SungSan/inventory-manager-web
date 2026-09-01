@@ -59,7 +59,7 @@ function OutboundJobTable({ jobs }: { jobs: OutboundJob[] }) {
   const [expandedId, setExpandedId] = useState("");
   return <section className="panel">
     <div className="table-wrap"><table>
-      <thead><tr><th>생성일</th><th>상태</th><th>출고 작업</th><th>송장</th><th>예정 수량</th><th>출고 완료</th><th>작업자</th><th>상세</th></tr></thead>
+      <thead><tr><th>생성일</th><th>상태</th><th>출고 작업</th><th>메모</th><th>송장</th><th>예정 수량</th><th>출고 완료</th><th>작업자</th><th>상세</th></tr></thead>
       <tbody>{jobs.map((job) => {
         const items = job.shipments.flatMap((shipment) => shipment.items);
         const requiredQty = items.reduce((sum, item) => sum + item.requiredQty, 0);
@@ -71,13 +71,14 @@ function OutboundJobTable({ jobs }: { jobs: OutboundJob[] }) {
             <td>{new Date(job.createdAt).toLocaleString("ko-KR")}</td>
             <td><span className={`status-badge ${job.status === "COMPLETED" ? "success" : "active"}`}>{job.status}</span></td>
             <td><strong>{job.name}</strong>{job.archivedAt ? <div className="small muted">숨김 · {job.archiveReason || "사유 없음"}</div> : null}</td>
+            <td>{job.note || "-"}</td>
             <td>{job.shipments.length.toLocaleString()}건</td>
             <td>{requiredQty.toLocaleString()}개</td>
             <td><strong>{pickedQty.toLocaleString()}개</strong></td>
             <td>{workers.length ? workers.join(", ") : "-"}</td>
             <td><button className="button button-secondary button-compact" onClick={() => setExpandedId(expanded ? "" : job.id)}>{expanded ? "접기" : "상세보기"}</button></td>
           </tr>,
-          expanded ? <tr key={`${job.id}-detail`} className="outbound-log-detail-row"><td colSpan={8}>
+          expanded ? <tr key={`${job.id}-detail`} className="outbound-log-detail-row"><td colSpan={9}>
             <div className="table-wrap"><table>
               <thead><tr><th>운송장</th><th>상태</th><th>품목</th><th>예정 수량</th><th>출고 완료</th><th>작업자</th></tr></thead>
               <tbody>{job.shipments.map((shipment) => {

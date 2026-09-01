@@ -71,6 +71,7 @@ function playTone(kind: "SCAN" | "COMPLETE" | "ERROR") {
 
 async function buildJob(
   name: string,
+  note: string,
   uploadRows: OutboundUploadRow[],
 ): Promise<OutboundJob> {
   const [barcodes, products, inventory] = await Promise.all([
@@ -166,6 +167,7 @@ async function buildJob(
   return {
     id: uid(),
     name,
+    note,
     createdAt: new Date().toISOString(),
     status: shipments.some((shipment) => shipment.status === "REVIEW")
       ? "DRAFT"
@@ -194,6 +196,7 @@ function OutboundProgressContent() {
   const [busy, setBusy] = useState(false);
   const [trackingFile, setTrackingFile] = useState<File | null>(null);
   const [quantityFile, setQuantityFile] = useState<File | null>(null);
+  const [jobNote, setJobNote] = useState("");
   const [feedback, setFeedback] = useState<{
     kind: "success" | "error" | "info" | "warning";
     title: string;
@@ -461,12 +464,17 @@ function OutboundProgressContent() {
   }
   async function upload() {
     if (!trackingFile || !quantityFile) return;
+    if (!jobNote.trim()) {
+      setFeedback({ kind: "error", title: "메모를 입력하세요.", body: "출고 작업 생성에는 메모가 필수입니다." });
+      return;
+    }
     setBusy(true);
     setFeedback(null);
     try {
       const rows = await parseOutboundWorkbooks(trackingFile, quantityFile);
       const job = await buildJob(
         quantityFile.name.replace(/\.xlsx?$/i, ""),
+        jobNote.trim(),
         rows,
       );
       const savedId = await createOutboundJob(job);
@@ -474,6 +482,7 @@ function OutboundProgressContent() {
       setCreating(false);
       setTrackingFile(null);
       setQuantityFile(null);
+      setJobNote("");
       setFeedback({
         kind: job.status === "READY" ? "success" : "warning",
         title: "출고 작업 생성 완료",
@@ -581,9 +590,19 @@ function OutboundProgressContent() {
                 }
               />
             </label>
+            <label className="span-two">
+              작업 메모 *
+              <input
+                value={jobNote}
+                onChange={(event) => setJobNote(event.target.value)}
+                placeholder="출고 목적, 대상 또는 작업 사유를 입력하세요"
+                required
+                disabled={busy}
+              />
+            </label>
             <button
               className="button button-primary span-two"
-                disabled={!canUse || busy || !trackingFile || !quantityFile}
+                disabled={!canUse || busy || !trackingFile || !quantityFile || !jobNote.trim()}
               onClick={() => void upload()}
             >
               {busy ? "두 파일 연결 중..." : "출고 작업 생성"}
@@ -609,7 +628,7 @@ function OutboundProgressContent() {
                   setFocus(null);
                 }}
               >
-                {job.archivedAt ? "[숨김] " : ""}{job.name} · 운송장 {job.shipments.length}건
+                {job.archivedAt ? "[숨김] " : ""}{job.name} · 운송장 {job.shipments.length}건 · {job.note}
               </button>
             ))}
           </div>

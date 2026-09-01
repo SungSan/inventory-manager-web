@@ -92,6 +92,8 @@ export async function postLocationInventoryBatch(input: {
   idempotencyKey: string;
 }): Promise<LocationBatchResult> {
   ensureLiveMode();
+  const note = input.note?.trim() ?? "";
+  if (!note) throw new Error("입고·출고 메모를 입력하세요.");
   const { data, error } = await client().rpc("post_location_inventory_batch", {
     p_operation: input.operation,
     p_location_id: input.locationId,
@@ -99,7 +101,7 @@ export async function postLocationInventoryBatch(input: {
       product_id: item.productId,
       qty: Math.max(1, Math.trunc(item.qty)),
     })),
-    p_note: input.note?.trim() || null,
+    p_note: note,
     p_idempotency_key: input.idempotencyKey,
   });
 
@@ -122,11 +124,13 @@ export async function confirmRemainingStock(input: {
   idempotencyKey: string;
 }): Promise<RemainingStockResult> {
   ensureLiveMode();
+  const reason = input.reason?.trim() ?? "";
+  if (!reason) throw new Error("출고 사유·메모를 입력하세요.");
   const { data, error } = await client().rpc("confirm_remaining_stock", {
     p_product_id: input.productId,
     p_location_id: input.locationId,
     p_remaining_qty: Math.max(0, Math.trunc(input.remainingQty)),
-    p_reason: input.reason?.trim() || null,
+    p_reason: reason,
     p_idempotency_key: input.idempotencyKey,
   });
 
