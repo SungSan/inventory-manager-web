@@ -106,6 +106,7 @@ function LogsContent() {
   const [transactions, setTransactions] = useState<InventoryTransaction[]>([]);
   const [audits, setAudits] = useState<AuditLog[]>([]);
   const [outboundJobs, setOutboundJobs] = useState<OutboundJob[]>([]);
+  const [loading, setLoading] = useState(true);
   const [feedback, setFeedback] = useState<{ kind: FeedbackKind; title: string; body?: string } | null>(null);
 
   const dateOptions = useMemo(() => toDateOptions(dateMode, startDate, endDate), [dateMode, endDate, startDate]);
@@ -128,10 +129,15 @@ function LogsContent() {
 
   const load = useCallback(async () => {
     if (invalidRange) return;
-    if (tab === "outbound") setOutboundJobs(await listOutboundJobs(true));
-    if (tab === "transactions") setTransactions(await listTransactions(search, operation, 500, "INOUT", dateOptions));
-    if (tab === "transfers") setTransactions(await listTransactions(search, operation, 500, "TRANSFER", dateOptions));
-    if (tab === "audit") setAudits(await listAuditLogs(search, 1000, dateOptions));
+    setLoading(true);
+    try {
+      if (tab === "outbound") setOutboundJobs(await listOutboundJobs(true));
+      if (tab === "transactions") setTransactions(await listTransactions(search, operation, 500, "INOUT", dateOptions));
+      if (tab === "transfers") setTransactions(await listTransactions(search, operation, 500, "TRANSFER", dateOptions));
+      if (tab === "audit") setAudits(await listAuditLogs(search, 1000, dateOptions));
+    } finally {
+      setLoading(false);
+    }
   }, [dateOptions, invalidRange, operation, search, tab]);
 
   useEffect(() => { const timer = window.setTimeout(() => void load(), 150); return () => window.clearTimeout(timer); }, [load]);
@@ -149,6 +155,14 @@ function LogsContent() {
     }
   }
 
+  const exportRows = tab === "outbound" ? visibleOutboundJobs.length : tab === "audit" ? audits.length : transactions.length;
+  const periodLabel = dateMode === "ALL" ? "전체기간" : dateMode === "DAY" ? startDate : `${startDate}_${endDate}`;
+
+  async function exportCurrentView() {
+    const { downloadLogXlsx } = await import("@/lib/log-xlsx");
+    downloadLogXlsx({ tab, transactions, outboundJobs: visibleOutboundJobs, audits, periodLabel });
+  }
+
   return <div className="page-stack">
     <section><p className="eyebrow">TRACEABILITY</p><h2>작업 로그</h2><p className="muted">입출고·출고작업·내부 재고이관 이력과 관리자 감사 기록을 분리하고 원하는 날짜 또는 기간으로 조회합니다.</p></section>
     <section className="tab-row log-tab-row">
@@ -163,6 +177,9 @@ function LogsContent() {
       <select value={dateMode} onChange={(event) => setDateMode(event.target.value as DateMode)} aria-label="날짜 조회 방식"><option value="ALL">전체 기간</option><option value="DAY">하루 선택</option><option value="RANGE">기간 선택</option></select>
       {dateMode !== "ALL" ? <label className="log-date-field"><span>{dateMode === "DAY" ? "조회일" : "시작일"}</span><input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label> : null}
       {dateMode === "RANGE" ? <label className="log-date-field"><span>종료일</span><input type="date" min={startDate} value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label> : null}
+      <button className="button button-secondary" disabled={invalidRange || loading || exportRows === 0} onClick={() => void exportCurrentView()}>
+        {loading ? "조회 중" : `현재 결과 엑셀 (${exportRows.toLocaleString()}건)`}
+      </button>
     </section>
     {invalidRange ? <Feedback kind="error" title="날짜 범위를 확인하세요.">종료일은 시작일보다 빠를 수 없습니다.</Feedback> : null}
     {feedback ? <Feedback kind={feedback.kind} title={feedback.title}>{feedback.body}</Feedback> : null}
