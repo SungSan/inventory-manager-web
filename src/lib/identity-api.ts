@@ -194,18 +194,10 @@ export async function completeUserIdentityAndConsent(input: {
     p_app_version: APP_VERSION,
   };
 
-  let response = await client().rpc("complete_user_identity_and_consent_v2", v2Args);
+  const response = await client().rpc("complete_user_identity_and_consent_v2", v2Args);
   if (response.error && isMissingRpcError(response.error)) {
-    response = await client().rpc("complete_user_identity_and_consent", {
-      p_entered_name: input.enteredName,
-      p_new_pin: input.newPin ?? "",
-      p_pin_confirm: input.pinConfirm ?? "",
-      p_final_pin: input.finalPin,
-      p_terms_checked: input.termsChecked,
-      p_privacy_checked: input.privacyChecked,
-    });
+    throw new Error("앱 버전을 기록하는 최신 동의 기능을 찾을 수 없습니다. 관리자에게 문의하세요.");
   }
-
   if (response.error) throw new Error(response.error.message);
   const row = record(response.data);
   return {

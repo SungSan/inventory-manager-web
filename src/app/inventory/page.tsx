@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CameraSearchField } from "@/components/camera-search-field";
 import { PermissionGuard } from "@/components/permission-guard";
 import { downloadCsv } from "@/lib/csv";
-import { listBarcodes, subscribeToInventory } from "@/lib/inventory-api";
-import { listAllInventoryRows } from "@/lib/full-data-api";
+import { subscribeToInventory } from "@/lib/inventory-api";
+import { listInventoryPageData } from "@/lib/full-data-api";
 import type {
   BarcodeRecord,
   InventoryRow,
@@ -117,14 +117,11 @@ function InventoryContent() {
   );
   const [error, setError] = useState("");
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
     try {
-      const [inventoryRows, barcodeRows] = await Promise.all([
-        listAllInventoryRows(),
-        listBarcodes("", "product"),
-      ]);
-      setRows(inventoryRows);
-      setBarcodes(barcodeRows);
+      const data = await listInventoryPageData(force);
+      setRows(data.rows);
+      setBarcodes(data.barcodes);
       setError("");
     } catch (cause) {
       setError(
@@ -138,7 +135,7 @@ function InventoryContent() {
   }, [load]);
   useEffect(
     () =>
-      subscribeToInventory(load, { scope: "inventory", fallbackMs: 60_000 }),
+      subscribeToInventory(() => load(true), { scope: "inventory", fallbackMs: 60_000 }),
     [load],
   );
 

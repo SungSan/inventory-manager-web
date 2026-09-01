@@ -3,6 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { getMyTermsAcceptances, type TermsAcceptanceReceipt } from "@/lib/identity-api";
 
+function appVersionLabel(item: TermsAcceptanceReceipt): string {
+  if (item.appVersion) return `V${item.appVersion}`;
+  const major = item.termsVersion.match(/^(\d+)(?:\.|$)/)?.[1];
+  return major ? `V${major}.x · 세부 버전 미기록` : "버전 미기록";
+}
+
 export default function MyConsentPage() {
   const [items, setItems] = useState<TermsAcceptanceReceipt[]>([]);
   const [selected, setSelected] = useState<TermsAcceptanceReceipt | null>(null);
@@ -49,7 +55,7 @@ export default function MyConsentPage() {
                 <tr key={item.id}>
                   <td>{new Date(item.acceptedAt).toLocaleString("ko-KR")}</td>
                   <td>{item.termsTitle}</td>
-                  <td>{item.appVersion ? `V${item.appVersion}` : "기록 없음"}</td>
+                  <td>{appVersionLabel(item)}</td>
                   <td>{item.termsVersion}</td>
                   <td><strong>{item.confirmationNo}</strong></td>
                   <td><button className="button button-secondary button-compact" onClick={() => setSelected(item)}>조회</button></td>
@@ -66,12 +72,12 @@ export default function MyConsentPage() {
             <div>
               <p className="eyebrow">CONSENT CERTIFICATE</p>
               <h3>{selected.termsTitle}</h3>
-              <p className="muted">확인번호 {selected.confirmationNo} · 앱 {selected.appVersion ? `V${selected.appVersion}` : "기록 없음"} · 약관 {selected.termsVersion} · {new Date(selected.acceptedAt).toLocaleString("ko-KR")}</p>
+              <p className="muted">확인번호 {selected.confirmationNo} · 앱 {appVersionLabel(selected)} · 약관 {selected.termsVersion} · {new Date(selected.acceptedAt).toLocaleString("ko-KR")}</p>
             </div>
             <button className="button button-secondary button-compact" onClick={() => window.print()}>확인증 인쇄</button>
           </div>
           <div className="metric-grid">
-            <article className="metric-card"><span>동의 당시 앱 버전</span><strong>{selected.appVersion ? `V${selected.appVersion}` : "기록 없음"}</strong></article>
+            <article className="metric-card"><span>동의 당시 앱 버전</span><strong>{appVersionLabel(selected)}</strong></article>
             <article className="metric-card"><span>이용조건 버전</span><strong>{selected.termsVersion}</strong></article>
             <article className="metric-card"><span>개인정보 안내 버전</span><strong>{selected.privacyNoticeVersion}</strong></article>
             <article className="metric-card"><span>인증 방식</span><strong style={{fontSize:14}}>{selected.authenticationMethod}</strong></article>
