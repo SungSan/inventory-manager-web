@@ -66,7 +66,9 @@ function ProductsContent() {
             : readRememberedCategory("san-wms:product-category"),
     }));
     const barcode = searchParams.get("barcode");
-    if (barcode) setForm((value) => ({ ...value, primaryBarcode: barcode }));
+    if (barcode) {
+      setForm((value) => ({ ...value, codeNo: barcode, primaryBarcode: barcode }));
+    }
   }, [searchParams]);
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 150);
@@ -108,7 +110,8 @@ function ProductsContent() {
         });
         setFeedback({ kind: "success", title: "상품 수정 완료" });
       } else {
-        await createProduct(form);
+        const codeNo = form.codeNo.trim();
+        await createProduct({ ...form, codeNo, primaryBarcode: codeNo });
         if (returnTo) {
           router.push(returnTo);
           return;
@@ -173,7 +176,7 @@ function ProductsContent() {
           <p className="eyebrow">PRODUCT MASTER</p>
           <h2>상품 관리</h2>
           <p className="muted">
-            신규 상품은 대표 상품 바코드와 동시에 등록됩니다. 동일한
+            신규 상품은 CODE_NO를 대표 상품 바코드로 동시에 등록합니다. 동일한
             CODE_NO·상품 바코드를 여러 세부 버전에 사용할 수 있으며
             상품명/버전으로 구분됩니다.
           </p>
@@ -236,8 +239,12 @@ function ProductsContent() {
             CODE_NO *
             <input
               value={form.codeNo}
-              onChange={(e) => setForm({ ...form, codeNo: e.target.value })}
+              onChange={(e) =>
+                setForm({ ...form, codeNo: e.target.value, primaryBarcode: e.target.value })
+              }
+              autoFocus={Boolean(form.codeNo)}
             />
+            {!editingId ? <small className="muted">대표 상품 바코드로 자동 등록됩니다.</small> : null}
           </label>
           <label>
             MASTER_CODE_NO
@@ -262,27 +269,13 @@ function ProductsContent() {
               onChange={(e) => setForm({ ...form, nameVer: e.target.value })}
             />
           </label>
-          {!editingId ? (
-            <label className="span-two">
-              대표 상품 바코드 *
-              <input
-                autoFocus={Boolean(form.primaryBarcode)}
-                value={form.primaryBarcode}
-                onChange={(e) =>
-                  setForm({ ...form, primaryBarcode: e.target.value })
-                }
-                placeholder="제조사 바코드 또는 지정 번호"
-              />
-            </label>
-          ) : null}
           <button
             className="button button-primary span-two"
             disabled={
               busy ||
               !form.codeNo.trim() ||
               !form.artist.trim() ||
-              !form.nameVer.trim() ||
-              (!editingId && !form.primaryBarcode.trim())
+              !form.nameVer.trim()
             }
             onClick={() => void save()}
           >
