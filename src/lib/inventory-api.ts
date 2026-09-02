@@ -513,20 +513,23 @@ export async function listProducts(
 }
 
 export async function createProduct(input: ProductInput): Promise<Product> {
-  if (isDemoMode()) return demoCreateProduct(input);
+  const codeNo = input.codeNo.trim();
+  if (!codeNo) throw new Error("CODE_NO를 입력하세요.");
+  const normalizedInput = { ...input, codeNo, primaryBarcode: codeNo };
+  if (isDemoMode()) return demoCreateProduct(normalizedInput);
   const { data, error } = await client().rpc("create_product_with_target_v2", {
     p_p_code_no: input.pCodeNo,
-    p_code_no: input.codeNo,
+    p_code_no: codeNo,
     p_master_code_no: input.masterCodeNo,
     p_artist: input.artist,
     p_name_ver: input.nameVer,
-    p_primary_barcode: input.primaryBarcode,
+    p_primary_barcode: codeNo,
     p_product_category: input.productCategory,
     p_barcode_source: input.barcodeSource ?? "manufacturer",
     p_symbology: "AUTO",
   });
   if (error) throw new Error(error.message);
-  const products = await listProducts(input.codeNo);
+  const products = await listProducts(codeNo);
   const product = products.find((item) => item.id === data) ?? products[0];
   if (!product) throw new Error("생성된 상품을 불러올 수 없습니다.");
   return product;
