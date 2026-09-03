@@ -6,10 +6,6 @@ import { PermissionGuard } from "@/components/permission-guard";
 import { useUser } from "@/components/user-provider";
 import { subscribeToInventory, updateUserRole } from "@/lib/inventory-api";
 import {
-  adminListBenefitFeatureGrants,
-  adminSetBenefitFeatureGrant,
-} from "@/lib/benefit-api";
-import {
   adminDeleteUserAccount,
   adminRequireAllReconsent,
   adminRequireUserReconsent,
@@ -40,9 +36,6 @@ function formatDateTime(value?: string): string {
 function UsersContent() {
   const { user: currentUser } = useUser();
   const [users, setUsers] = useState<AdminUserSecurityStatus[]>([]);
-  const [benefitGrants, setBenefitGrants] = useState<Record<string, boolean>>(
-    {},
-  );
   const [showDeleted, setShowDeleted] = useState(false);
   const [busyId, setBusyId] = useState("");
   const [feedback, setFeedback] = useState<{
@@ -55,14 +48,8 @@ function UsersContent() {
   );
   const [accessDraft, setAccessDraft] = useState<UserAccessConfig | null>(null);
   const load = useCallback(async () => {
-    const [nextUsers, grants] = await Promise.all([
-      listAdminUserSecurityStatus(),
-      adminListBenefitFeatureGrants(),
-    ]);
+    const nextUsers = await listAdminUserSecurityStatus();
     setUsers(nextUsers);
-    setBenefitGrants(
-      Object.fromEntries(grants.map((grant) => [grant.userId, grant.enabled])),
-    );
   }, []);
   useEffect(() => {
     void load();
@@ -163,28 +150,6 @@ function UsersContent() {
     );
     setAccessUser(null);
     setAccessDraft(null);
-  }
-
-  async function toggleBenefitFeature(user: AdminUserSecurityStatus) {
-    const next = !Boolean(benefitGrants[user.id]);
-    const reason = askReason(
-      next
-        ? "특전 자동계산 사용 승인 사유를 입력하세요."
-        : "특전 자동계산 사용 승인 회수 사유를 입력하세요.",
-      next ? "특전 업무 담당 계정 승인" : "특전 업무 권한 회수",
-    );
-    if (!reason) return;
-    if (
-      !window.confirm(
-        `${user.assignedName || user.email} 계정의 특전 자동계산 기능을 ${next ? "허용" : "차단"}할까요?\n\n역할 등급과는 별도로 적용됩니다.`,
-      )
-    )
-      return;
-    await run(
-      user.id,
-      () => adminSetBenefitFeatureGrant(user.id, next, reason),
-      `특전 자동계산 기능을 ${next ? "허용" : "차단"}했습니다.`,
-    );
   }
 
   async function editAssignedName(user: AdminUserSecurityStatus) {
@@ -341,9 +306,7 @@ function UsersContent() {
           <p className="eyebrow">ACCESS & IDENTITY CONTROL</p>
           <h2>사용자·본인확인 관리</h2>
           <p className="muted">
-            역할, 계정 사용 여부와 별도로 특정 기능의 계정별 승인을 관리합니다.
-            특전 자동계산은 조회자도 별도 승인되면 사용할 수 있고,
-            매니저·관리자도 승인되지 않으면 메뉴와 데이터에 접근할 수 없습니다.
+            역할, 계정 사용 여부와 사용자별 메뉴·상품 접근권한을 관리합니다.
           </p>
         </div>
         <div className="row-actions">
@@ -384,7 +347,6 @@ function UsersContent() {
                 <th>로그인 ID·상태</th>
                 <th>마지막 로그인</th>
                 <th>역할</th>
-                <th>특전 자동계산</th>
                 <th>계정 유형</th>
                 <th>PIN</th>
                 <th>동의 상태</th>
@@ -397,7 +359,6 @@ function UsersContent() {
                 const deleted = Boolean(user.deletedAt);
                 const isSelf = currentUser?.id === user.id;
                 const editable = !busy && !deleted && user.active;
-                const benefitEnabled = Boolean(benefitGrants[user.id]);
                 return (
                   <tr key={user.id}>
                     <td>
@@ -466,23 +427,6 @@ function UsersContent() {
                         <option value="operator">작업자</option>
                         <option value="viewer">조회자</option>
                       </select>
-                    </td>
-                    <td>
-                      <span
-                        className={`status-badge ${benefitEnabled ? "success" : "inactive"}`}
-                      >
-                        {benefitEnabled ? "사용 허용" : "차단"}
-                      </span>
-                      <br />
-                      <button
-                        className={`button button-compact ${benefitEnabled ? "button-danger" : "button-primary"}`}
-                        disabled={!editable}
-                        onClick={() => void toggleBenefitFeature(user)}
-                      >
-                        {benefitEnabled ? "승인 회수" : "사용 승인"}
-                      </button>
-                      <br />
-                      <small className="muted">역할과 독립</small>
                     </td>
                     <td>
                       <select
