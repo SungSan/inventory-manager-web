@@ -5,7 +5,7 @@ export const menuDefinitions = [
   ["dashboard", "대시보드"], ["scan", "입고·출고"], ["inventory", "재고조회"],
   ["outbound-progress", "출고 진행"],
   ["transfers", "재고이관"], ["external-transfers", "외부이관"], ["work-requests", "업무요청"],
-  ["benefits", "특전 자동계산"], ["shipment-documents", "출고명세서"], ["products", "상품관리"],
+  ["shipment-documents", "출고명세서"], ["products", "상품관리"],
   ["barcodes", "바코드"], ["locations", "로케이션"], ["location-map", "로케이션맵"],
   ["utilization", "용적률"], ["stocktakes", "재고실사"], ["logs", "로그"],
   ["import", "데이터이전"], ["users", "사용자"], ["my-consent", "내 동의내역"],

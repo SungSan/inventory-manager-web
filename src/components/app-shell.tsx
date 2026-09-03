@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { AuthGate } from "@/components/auth-gate";
-import { useBenefitFeatureAccess } from "@/components/benefit-feature-guard";
 import { NumericInputGuard } from "@/components/numeric-input-guard";
 import { StocktakeLiveEnhancer } from "@/components/stocktake-live-enhancer";
 import { WorkRequestIndicator } from "@/components/work-request-indicator";
@@ -21,7 +20,7 @@ import { listUsers, subscribeToInventory } from "@/lib/inventory-api";
 import type { UserProfile } from "@/types/domain";
 import styles from "./app-shell.module.css";
 
-type NavItem = { key: string; href: string; label: string; permission?: Permission; benefitFeature?: boolean };
+type NavItem = { key: string; href: string; label: string; permission?: Permission };
 type PresenceUser = { userId: string; displayName: string; pageLabel: string; path: string; onlineAt: number; lastActiveAt: number; ipAddress?: string };
 type PresenceDisplay = PresenceUser & { disconnectedAt?: number };
 
@@ -37,7 +36,6 @@ const nav: NavItem[] = [
   { key: "transfers", href: "/transfers", label: "재고이관", permission: "transfer_inventory" },
   { key: "external-transfers", href: "/external-transfers", label: "외부이관", permission: "external_transfer" },
   { key: "work-requests", href: "/work-requests", label: "업무요청", permission: "work_requests" },
-  { key: "benefits", href: "/benefits", label: "특전 자동계산", benefitFeature: true },
   { key: "shipment-documents", href: "/shipment-documents", label: "출고명세서", permission: "shipment_documents" },
   { key: "products", href: "/products", label: "상품관리", permission: "manage_products" },
   { key: "barcodes", href: "/barcodes", label: "바코드", permission: "manage_barcodes" },
@@ -195,7 +193,6 @@ function OnlinePresenceTicker({ user, pathname, pageLabel, canViewIp }: { user: 
 function ShellContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, switchDemoUser } = useUser();
-  const { allowed: benefitFeatureAllowed } = useBenefitFeatureAccess();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerPinned, setDrawerPinned] = useState(false);
@@ -292,10 +289,9 @@ function ShellContent({ children }: { children: React.ReactNode }) {
     () => user ? nav.filter((item) => {
       const override = user.menuAccess?.[item.key];
       if (override === "HIDDEN") return false;
-      if (item.benefitFeature) return benefitFeatureAllowed;
       return item.permission ? hasPermission(user.role, item.permission) : false;
     }) : [],
-    [user, benefitFeatureAllowed],
+    [user],
   );
 
   const mobileNav = useMemo(
