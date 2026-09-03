@@ -8,7 +8,7 @@ export const menuDefinitions = [
   ["shipment-documents", "출고명세서"], ["products", "상품관리"],
   ["barcodes", "바코드"], ["locations", "로케이션"], ["location-map", "로케이션맵"],
   ["utilization", "용적률"], ["stocktakes", "재고실사"], ["logs", "로그"],
-  ["import", "데이터이전"], ["users", "사용자"], ["my-consent", "내 동의내역"],
+  ["import", "데이터이전"], ["users", "사용자"], ["my-consent", "내 동의내역"], ["my-password", "내 비밀번호"],
 ] as const;
 
 export interface UserAccessConfig { menuAccess: Record<string, MenuAccessLevel>; productScopes: ProductScope[]; }
