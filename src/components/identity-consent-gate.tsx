@@ -14,6 +14,7 @@ import {
 } from "@/lib/app-version";
 import { getSupabaseClient } from "@/lib/supabase";
 import styles from "./identity-consent-gate.module.css";
+import { PasswordChangeForm } from "@/components/password-change-form";
 
 function digitsOnly(value: string): string {
   return value.replace(/\D/g, "").slice(0, 6);
@@ -138,6 +139,10 @@ export function IdentityConsentGate({ children }: { children: React.ReactNode })
         </section>
       </main>
     );
+  }
+
+  if (status?.passwordChangeRequired && !status.isServiceAccount && !receipt) {
+    return <main className={styles.page}><div className={styles.card}><PasswordChangeForm required expiresAt={status.passwordExpiresAt} onChanged={load} /></div></main>;
   }
 
   if (status?.accessReady && !receipt) return children;

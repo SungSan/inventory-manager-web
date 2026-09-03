@@ -28,6 +28,10 @@ export interface UserAccessStatus {
   latestAppVersion?: string;
   latestTermsAcceptedAt?: string;
   accessReady: boolean;
+  identityReady: boolean;
+  passwordChangeRequired: boolean;
+  passwordChangedAt?: string;
+  passwordExpiresAt?: string;
   terms: LegalDocumentVersion;
   privacyNotice: LegalDocumentVersion;
 }
@@ -145,6 +149,8 @@ export async function getUserAccessStatus(): Promise<UserAccessStatus> {
       latestTermsVersion: "3.9.0",
       latestAppVersion: APP_VERSION,
       accessReady: true,
+      identityReady: true,
+      passwordChangeRequired: false,
       terms: { version: "3.9.0", title: "SAN WMS 프로그램 이용조건 및 권리 안내", content: "", contentHash: "", effectiveAt: "" },
       privacyNotice: { version: "3.9.0", title: "본인확인 및 동의 기록의 수집·이용 안내", content: "", contentHash: "", effectiveAt: "" },
     };
@@ -171,6 +177,10 @@ export async function getUserAccessStatus(): Promise<UserAccessStatus> {
     latestAppVersion: optionalText(row.latest_app_version),
     latestTermsAcceptedAt: optionalText(row.latest_terms_accepted_at),
     accessReady: Boolean(row.access_ready),
+    identityReady: row.identity_ready == null ? Boolean(row.access_ready) : Boolean(row.identity_ready),
+    passwordChangeRequired: Boolean(row.password_change_required),
+    passwordChangedAt: optionalText(row.password_changed_at),
+    passwordExpiresAt: optionalText(row.password_expires_at),
     terms: mapDocument(row.terms),
     privacyNotice: mapDocument(row.privacy_notice),
   };
