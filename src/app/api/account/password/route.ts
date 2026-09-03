@@ -38,19 +38,19 @@ export async function POST(request: Request) {
   if (!sameAsCurrent.error) return reply("현재 사용 중인 비밀번호는 다시 사용할 수 없습니다.", 409);
 
   const fingerprint = createHmac("sha256", pepper).update(`${user.id}\0${newPassword}`, "utf8").digest("hex");
-  const { data: history, error: historyError } = await admin.from("password_history").select("password_fingerprint").eq("user_id", user.id);
+  const { data: history, error: historyError } = await admin.from("password_history").select("password_fingerprint").eq("user_id", user.id).order("created_at", { ascending: false }).limit(3);
   if (historyError) return reply("비밀번호 이력을 확인하지 못했습니다.", 500);
   const candidate = Buffer.from(fingerprint, "hex");
   if ((history ?? []).some((row) => {
     const prior = Buffer.from(String(row.password_fingerprint), "hex");
     return prior.length === candidate.length && timingSafeEqual(prior, candidate);
-  })) return reply("이전에 사용한 비밀번호는 다시 사용할 수 없습니다.", 409);
+  })) return reply("최근 3회 사용한 비밀번호는 다시 사용할 수 없습니다.", 409);
 
-  const { error: reserveError } = await admin.from("password_history").insert({ user_id: user.id, password_fingerprint: fingerprint });
-  if (reserveError) return reply("비밀번호 변경을 준비하지 못했습니다.", 500);
+  const { data: reservation, error: reserveError } = await admin.from("password_history").insert({ user_id: user.id, password_fingerprint: fingerprint }).select("id").single();
+  if (reserveError || !reservation) return reply("비밀번호 변경을 준비하지 못했습니다.", 500);
   const changed = await admin.auth.admin.updateUserById(user.id, { password: newPassword });
   if (changed.error || !changed.data.user?.updated_at) {
-    await admin.from("password_history").delete().eq("user_id", user.id).eq("password_fingerprint", fingerprint);
+    await admin.from("password_history").delete().eq("id", reservation.id);
     return reply(changed.error?.message || "비밀번호를 변경하지 못했습니다.", 400);
   }
   const completed = await admin.rpc("complete_my_password_change", {
@@ -59,7 +59,7 @@ export async function POST(request: Request) {
   });
   if (completed.error) {
     await admin.auth.admin.updateUserById(user.id, { password: currentPassword });
-    await admin.from("password_history").delete().eq("user_id", user.id).eq("password_fingerprint", fingerprint);
+    await admin.from("password_history").delete().eq("id", reservation.id);
     return reply("정책 기록에 실패하여 비밀번호 변경을 취소했습니다.", 500);
   }
   return NextResponse.json({ ok: true });

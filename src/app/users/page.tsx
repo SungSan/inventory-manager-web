@@ -22,6 +22,7 @@ import { adminIssueClientControl, type ClientControlAction } from "@/lib/client-
 import { getSupabaseClient } from "@/lib/supabase";
 import type { UserRole } from "@/types/domain";
 import type { MenuAccessLevel, ProductScope } from "@/types/domain";
+import { adminResetUserPassword, generateTemporaryPassword } from "@/lib/password-policy-api";
 import {
   adminGetUserAccessConfig,
   adminSaveUserAccessConfig,
@@ -180,6 +181,32 @@ function UsersContent() {
       () => adminSetAccountType(user.id, accountType, service),
       "계정 유형을 변경했습니다.",
     );
+  }
+
+  async function resetPassword(user: AdminUserSecurityStatus) {
+    const generated = generateTemporaryPassword();
+    const entered = window.prompt(
+      `${user.assignedName || user.email} 사용자의 임시 비밀번호입니다.\n필요하면 수정한 뒤 확인을 누르세요.`,
+      generated,
+    );
+    if (entered == null) return;
+    const temporaryPassword = entered.trim();
+    if (!temporaryPassword) {
+      setFeedback({ kind: "warning", title: "임시 비밀번호를 입력해야 합니다." });
+      return;
+    }
+    if (!window.confirm(`${user.assignedName || user.email} 사용자 1명의 비밀번호를 초기화할까요?\n초기화 후 해당 사용자는 반드시 새 비밀번호로 변경해야 합니다.`)) return;
+    setBusyId(user.id);
+    try {
+      await adminResetUserPassword(user.id, temporaryPassword);
+      setFeedback({ kind: "success", title: "비밀번호를 초기화했습니다.", body: "임시 비밀번호는 방금 열린 복사창에서만 확인할 수 있습니다." });
+      await load();
+      window.prompt("사용자에게 전달할 임시 비밀번호입니다. 이 창을 닫으면 다시 확인할 수 없습니다.", temporaryPassword);
+    } catch (cause) {
+      setFeedback({ kind: "error", title: "비밀번호 초기화 실패", body: cause instanceof Error ? cause.message : "오류" });
+    } finally {
+      setBusyId("");
+    }
   }
 
   async function disableUser(user: AdminUserSecurityStatus) {
@@ -520,6 +547,15 @@ function UsersContent() {
                             {!user.isServiceAccount &&
                             user.accountType === "HUMAN" ? (
                               <>
+                                {user.role !== "admin" && !isSelf ? (
+                                  <button
+                                    className="button button-secondary button-compact"
+                                    onClick={() => void resetPassword(user)}
+                                    disabled={!editable}
+                                  >
+                                    비밀번호 초기화
+                                  </button>
+                                ) : null}
                                 <button
                                   className="button button-secondary button-compact"
                                   onClick={() => {
