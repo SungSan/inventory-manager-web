@@ -25,7 +25,7 @@ export function PasswordChangeForm({ required = false, expiresAt, onChanged }: {
   return <form className="panel page-stack" onSubmit={submit}>
     <div><p className="eyebrow">PASSWORD SECURITY</p><h2>{required ? "비밀번호 재설정이 필요합니다" : "내 비밀번호 변경"}</h2>
       <p className="muted">10자 이상, 영문 대·소문자·숫자·특수문자를 모두 사용하세요. 현재 및 이전에 사용한 비밀번호는 사용할 수 없습니다.</p>
-      {required ? <p className="inline-error">{expiresAt ? `변경 기한 ${new Date(expiresAt).toLocaleString("ko-KR")}이 지났습니다.` : "최초 1회 비밀번호 변경이 필요합니다."} 변경 후 업무 화면을 사용할 수 있습니다.</p> : null}
+      {required ? <p className="inline-error">{expiresAt && new Date(expiresAt).getTime() <= Date.now() ? `변경 기한 ${new Date(expiresAt).toLocaleString("ko-KR")}이 지났습니다.` : expiresAt ? "비밀번호 보안 상태를 다시 확인해야 합니다." : "최초 1회 비밀번호 변경이 필요합니다."} 변경 후 업무 화면을 사용할 수 있습니다.</p> : null}
     </div>
     <label>현재 비밀번호<input type="password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required disabled={busy} /></label>
     <label>새 비밀번호<input type="password" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} minLength={10} required disabled={busy} /></label>
