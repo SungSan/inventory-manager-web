@@ -60,7 +60,7 @@ export async function POST(request: Request) {
     await admin.auth.admin.deleteUser(userId);
     return reply("사용자 프로필을 준비하지 못해 계정 생성을 취소했습니다.", 500);
   }
-  const fingerprint = createHmac("sha256", pepper).update(`${userId}\\0${temporaryPassword}`, "utf8").digest("hex");
+  const fingerprint = createHmac("sha256", pepper).update(`${userId}\0${temporaryPassword}`, "utf8").digest("hex");
   const history = await admin.from("password_history").insert({ user_id: userId, password_fingerprint: fingerprint });
   if (history.error) {
     await admin.auth.admin.deleteUser(userId);
