@@ -8,6 +8,7 @@ import { desktopActivityStorageKey } from "@/lib/session-guard-api";
 import { UserProvider } from "@/components/user-provider";
 import { IdentityConsentGate } from "@/components/identity-consent-gate";
 import { DesktopSessionGuard } from "@/components/desktop-session-guard";
+import { LoginAnnouncementGate } from "@/components/login-announcement-gate";
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -79,9 +80,11 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   return (
     <IdentityConsentGate>
-      <DesktopSessionGuard userId={session.user.id}>
-        <UserProvider>{children}</UserProvider>
-      </DesktopSessionGuard>
+      <LoginAnnouncementGate userId={session.user.id} sessionId={session.user.last_sign_in_at ?? session.user.id}>
+        <DesktopSessionGuard userId={session.user.id}>
+          <UserProvider>{children}</UserProvider>
+        </DesktopSessionGuard>
+      </LoginAnnouncementGate>
     </IdentityConsentGate>
   );
 }

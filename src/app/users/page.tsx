@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Feedback, type FeedbackKind } from "@/components/feedback";
 import { PermissionGuard } from "@/components/permission-guard";
+import { AdminCreateUser } from "@/components/admin-create-user";
 import { useUser } from "@/components/user-provider";
 import { subscribeToInventory, updateUserRole } from "@/lib/inventory-api";
 import {
@@ -337,6 +338,7 @@ function UsersContent() {
           </p>
         </div>
         <div className="row-actions">
+          <AdminCreateUser onCreated={load} />
           <button className="button button-secondary" onClick={() => void issueClientControl("RELOAD")} disabled={Boolean(busyId)}>
             전체 강제 새로고침
           </button>

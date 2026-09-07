@@ -46,6 +46,7 @@ const nav: NavItem[] = [
   { key: "logs", href: "/logs", label: "로그", permission: "view_logs" },
   { key: "import", href: "/import", label: "데이터이전", permission: "import_data" },
   { key: "users", href: "/users", label: "사용자", permission: "manage_users" },
+  { key: "notices", href: "/notices", label: "공지사항", permission: "manage_users" },
   { key: "my-consent", href: "/my-consent", label: "내 동의내역", permission: "view_dashboard" },
   { key: "my-password", href: "/my-password", label: "내 비밀번호", permission: "view_dashboard" },
 ];
