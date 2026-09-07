@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
@@ -8,7 +9,8 @@ export async function POST(request: Request) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const publicKey = (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)?.trim();
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
-  if (!url || !publicKey || !serviceKey) return reply("사용자 생성 서버 설정이 완료되지 않았습니다.", 503);
+  const pepper = process.env.PASSWORD_HISTORY_PEPPER?.trim();
+  if (!url || !publicKey || !serviceKey || !pepper) return reply("사용자 생성 서버 설정이 완료되지 않았습니다.", 503);
 
   const bearer = request.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
   if (!bearer) return reply("로그인이 필요합니다.", 401);
@@ -57,6 +59,12 @@ export async function POST(request: Request) {
   if (profile.error || !profile.data) {
     await admin.auth.admin.deleteUser(userId);
     return reply("사용자 프로필을 준비하지 못해 계정 생성을 취소했습니다.", 500);
+  }
+  const fingerprint = createHmac("sha256", pepper).update(`${userId}\\0${temporaryPassword}`, "utf8").digest("hex");
+  const history = await admin.from("password_history").insert({ user_id: userId, password_fingerprint: fingerprint });
+  if (history.error) {
+    await admin.auth.admin.deleteUser(userId);
+    return reply("비밀번호 이력을 준비하지 못해 계정 생성을 취소했습니다.", 500);
   }
   await admin.from("audit_logs").insert({
     actor_id: caller.id, action: "USER_CREATED", entity_type: "user", entity_id: userId,
