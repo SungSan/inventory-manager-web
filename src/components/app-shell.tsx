@@ -479,5 +479,7 @@ function ShellContent({ children }: { children: React.ReactNode }) {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  if (pathname.startsWith("/hyososup-demo")) return <>{children}</>;
   return <AuthGate><ShellContent>{children}</ShellContent></AuthGate>;
 }
